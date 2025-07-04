@@ -1,8 +1,121 @@
+class AutoGenerationManager {
+    constructor() {
+        this.worker = null;
+        this.isRunning = false;
+        this.initializeElements();
+        this.bindEvents();
+        this.initializeWorker();
+    }
+
+    initializeElements() {
+        this.autoArticleCountInput = document.getElementById('auto-article-count');
+        this.startAutoGenerationBtn = document.getElementById('start-auto-generation');
+        this.stopAutoGenerationBtn = document.getElementById('stop-auto-generation');
+        this.autoGenerationStatus = document.getElementById('auto-generation-status');
+        this.progressFill = document.getElementById('progress-fill');
+        this.statusText = document.getElementById('status-text');
+        this.progressDetails = document.getElementById('progress-details');
+    }
+
+    bindEvents() {
+        this.startAutoGenerationBtn.addEventListener('click', () => this.startAutoGeneration());
+        this.stopAutoGenerationBtn.addEventListener('click', () => this.stopAutoGeneration());
+    }
+
+    initializeWorker() {
+        // Service Workerを強制更新するためにタイムスタンプを追加
+        const timestamp = Date.now();
+        this.worker = new Worker(`service-worker.js?v=${timestamp}`);
+        
+        this.worker.onmessage = (event) => {
+            const { type, data } = event.data;
+            
+            switch (type) {
+                case 'STATUS_UPDATE':
+                    this.updateStatus(data);
+                    break;
+                case 'ERROR':
+                    this.showError(data.message);
+                    break;
+            }
+        };
+        
+        console.log('Worker initialized with version:', timestamp);
+    }
+
+    startAutoGeneration() {
+        if (!window.satelliteSystem.currentSiteId) {
+            alert('まずサイト分析を実行してください。');
+            return;
+        }
+
+        const articleCount = parseInt(this.autoArticleCountInput.value);
+        if (isNaN(articleCount) || articleCount < 1) {
+            alert('作成件数を正しく入力してください。');
+            return;
+        }
+
+        this.isRunning = true;
+        this.startAutoGenerationBtn.disabled = true;
+        this.stopAutoGenerationBtn.disabled = false;
+        this.autoGenerationStatus.style.display = 'block';
+
+        this.worker.postMessage({
+            type: 'START_AUTO_GENERATION',
+            data: {
+                siteId: window.satelliteSystem.currentSiteId,
+                aiModel: window.satelliteSystem.aiModelSelect.value,
+                articleCount: articleCount
+            }
+        });
+    }
+
+    stopAutoGeneration() {
+        this.worker.postMessage({ type: 'STOP_AUTO_GENERATION' });
+        this.isRunning = false;
+        this.startAutoGenerationBtn.disabled = false;
+        this.stopAutoGenerationBtn.disabled = true;
+    }
+
+    updateStatus(data) {
+        this.isRunning = data.isRunning;
+        this.startAutoGenerationBtn.disabled = data.isRunning;
+        this.stopAutoGenerationBtn.disabled = !data.isRunning;
+        
+        if (data.isRunning) {
+            this.autoGenerationStatus.style.display = 'block';
+        }
+
+        this.statusText.textContent = data.message;
+        this.progressFill.style.width = `${data.progress}%`;
+        this.progressDetails.textContent = `${data.generatedCount}/${data.totalArticles} 記事完了`;
+
+        if (data.currentArticle) {
+            this.progressDetails.textContent += ` (現在: ${data.currentArticle})`;
+        }
+
+        if (!data.isRunning) {
+            setTimeout(() => {
+                this.autoGenerationStatus.style.display = 'none';
+                window.satelliteSystem.loadSiteData(window.satelliteSystem.currentSiteId);
+            }, 3000);
+        }
+    }
+
+    showError(message) {
+        alert('エラー: ' + message);
+        this.isRunning = false;
+        this.startAutoGenerationBtn.disabled = false;
+        this.stopAutoGenerationBtn.disabled = true;
+    }
+}
+
 class SatelliteColumnSystem {
     constructor() {
         this.initializeElements();
         this.bindEvents();
         this.loadSites();
+        this.autoGenerationManager = new AutoGenerationManager();
     }
 
     initializeElements() {
@@ -92,13 +205,39 @@ class SatelliteColumnSystem {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'get_sites' })
             });
-            const result = await response.json();
+            const result = await this.handleApiResponse(response);
             
             if (result.success) {
                 this.updateSiteSelect(result.sites);
             }
         } catch (error) {
             console.error('サイト読み込みエラー:', error);
+        }
+    }
+    
+    async handleApiResponse(response) {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const text = await response.text();
+        
+        // レスポンスがHTMLかJSONかを判別
+        if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            console.error('HTML response received (first 500 chars):', text.substring(0, 500));
+            
+            // エラーメッセージを抽出してみる
+            const errorMatch = text.match(/<title>(.*?)<\/title>/i);
+            const errorTitle = errorMatch ? errorMatch[1] : 'Unknown error';
+            
+            throw new Error(`サーバーからHTMLレスポンスが返されました: ${errorTitle}`);
+        }
+        
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            console.error('Invalid JSON response:', text.substring(0, 200));
+            throw new Error('サーバーから無効なJSONが返されました: ' + error.message);
         }
     }
 
@@ -130,7 +269,7 @@ class SatelliteColumnSystem {
                     site_id: siteId 
                 })
             });
-            const result = await response.json();
+            const result = await this.handleApiResponse(response);
             
             if (result.success) {
                 this.currentSiteId = siteId;
@@ -174,7 +313,7 @@ class SatelliteColumnSystem {
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await response.json();
+            const result = await this.handleApiResponse(response);
             
             if (result.success) {
                 this.currentSiteId = result.site_id;
@@ -211,12 +350,12 @@ class SatelliteColumnSystem {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    action: 'create_article_outline',
+                    action: 'add_article_outline',
                     site_id: this.currentSiteId,
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await response.json();
+            const result = await this.handleApiResponse(response);
             
             if (result.success) {
                 this.articles = result.articles;
@@ -232,6 +371,7 @@ class SatelliteColumnSystem {
             this.hideLoading();
         }
     }
+
 
     displayArticleOutline() {
         const tableHtml = `
@@ -303,7 +443,7 @@ class SatelliteColumnSystem {
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await response.json();
+            const result = await this.handleApiResponse(response);
             
             if (result.success) {
                 // 記事一覧を更新
@@ -351,7 +491,7 @@ class SatelliteColumnSystem {
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await response.json();
+            const result = await this.handleApiResponse(response);
             
             if (result.success) {
                 this.articles = result.articles;
@@ -434,5 +574,5 @@ class SatelliteColumnSystem {
 
 // アプリケーション初期化
 document.addEventListener('DOMContentLoaded', () => {
-    new SatelliteColumnSystem();
+    window.satelliteSystem = new SatelliteColumnSystem();
 });

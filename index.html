@@ -54,6 +54,22 @@
                 <button type="button" id="generate-all-articles">全記事一括作成</button>
                 <button type="button" id="export-csv">CSV出力</button>
             </div>
+            <div class="auto-generation-section">
+                <h3>全自動モード</h3>
+                <div class="auto-controls">
+                    <label for="auto-article-count">作成件数:</label>
+                    <input type="number" id="auto-article-count" value="50" min="1" max="1000">
+                    <button type="button" id="start-auto-generation">全自動開始</button>
+                    <button type="button" id="stop-auto-generation" disabled>停止</button>
+                </div>
+                <div id="auto-generation-status" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="status-text" id="status-text"></div>
+                    <div class="progress-details" id="progress-details"></div>
+                </div>
+            </div>
             <div id="article-outline-table"></div>
         </div>
 

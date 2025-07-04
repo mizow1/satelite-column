@@ -1,4 +1,12 @@
 <?php
+// エラー出力を抑制（JSON以外の出力を防ぐため）
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+// 出力バッファリングを開始
+ob_start();
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
@@ -8,40 +16,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-require_once 'config.php';
-require_once 'ai_service.php';
+// JSONレスポンスを送信する関数
+function sendJsonResponse($data) {
+    // 出力バッファをクリア
+    ob_clean();
+    echo json_encode($data);
+    exit;
+}
 
 try {
+    // 必要なファイルをインクルード
+    if (!file_exists('config.php')) {
+        sendJsonResponse(['success' => false, 'error' => 'config.php not found']);
+    }
+    if (!file_exists('ai_service.php')) {
+        sendJsonResponse(['success' => false, 'error' => 'ai_service.php not found']);
+    }
+    
+    require_once 'config.php';
+    require_once 'ai_service.php';
+    
     $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        sendJsonResponse(['success' => false, 'error' => 'Invalid JSON input']);
+    }
+    
     $action = $input['action'] ?? '';
     
     switch ($action) {
         case 'get_sites':
-            echo json_encode(getSites());
+            sendJsonResponse(getSites());
             break;
         case 'get_site_data':
-            echo json_encode(getSiteData($input['site_id']));
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
+            sendJsonResponse(getSiteData($input['site_id']));
             break;
         case 'analyze_sites':
-            echo json_encode(analyzeSites($input['urls'], $input['ai_model']));
+            if (!isset($input['urls']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'urls and ai_model are required']);
+            }
+            sendJsonResponse(analyzeSites($input['urls'], $input['ai_model']));
             break;
         case 'create_article_outline':
-            echo json_encode(createArticleOutline($input['site_id'], $input['ai_model']));
+            if (!isset($input['site_id']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
+            }
+            sendJsonResponse(createArticleOutline($input['site_id'], $input['ai_model']));
+            break;
+        case 'add_article_outline':
+            if (!isset($input['site_id']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
+            }
+            sendJsonResponse(addArticleOutline($input['site_id'], $input['ai_model']));
             break;
         case 'generate_article':
-            echo json_encode(generateArticle($input['article_id'], $input['ai_model']));
+            if (!isset($input['article_id']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_id and ai_model are required']);
+            }
+            sendJsonResponse(generateArticle($input['article_id'], $input['ai_model']));
             break;
         case 'generate_all_articles':
-            echo json_encode(generateAllArticles($input['site_id'], $input['ai_model']));
+            if (!isset($input['site_id']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
+            }
+            sendJsonResponse(generateAllArticles($input['site_id'], $input['ai_model']));
             break;
         case 'export_csv':
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
             exportCsv($input['site_id']);
             break;
         default:
-            echo json_encode(['success' => false, 'error' => 'Invalid action']);
+            sendJsonResponse(['success' => false, 'error' => 'Invalid action']);
     }
+} catch (ParseError $e) {
+    error_log('PHP Parse Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
+    sendJsonResponse(['success' => false, 'error' => 'PHP Parse Error: ' . $e->getMessage()]);
+} catch (Error $e) {
+    error_log('PHP Fatal Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
+    sendJsonResponse(['success' => false, 'error' => 'PHP Fatal Error: ' . $e->getMessage()]);
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    error_log('Exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ' on line ' . $e->getLine());
+    sendJsonResponse(['success' => false, 'error' => $e->getMessage()]);
 }
 
 function getSites() {
@@ -51,6 +111,8 @@ function getSites() {
         $sites = $stmt->fetchAll();
         
         return ['success' => true, 'sites' => $sites];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
         return ['success' => false, 'error' => $e->getMessage()];
     }
@@ -201,19 +263,27 @@ function generateArticle($articleId, $aiModel) {
         $articlePrompt = createArticlePrompt($article);
         $content = $aiService->generateText($articlePrompt, $aiModel);
         
+        if (empty($content)) {
+            return ['success' => false, 'error' => 'AI service returned empty content'];
+        }
+        
         // 記事更新
         $stmt = $pdo->prepare("UPDATE articles SET content = ?, status = 'generated', updated_at = NOW() WHERE id = ?");
         $stmt->execute([$content, $articleId]);
         
         // 生成ログ保存
-        $stmt = $pdo->prepare("INSERT INTO ai_generation_logs (article_id, ai_model, prompt, response, generation_time) VALUES (?, ?, ?, ?, ?)");
-        $stmt->execute([
-            $articleId,
-            $aiModel,
-            $articlePrompt,
-            $content,
-            0 // 実際の生成時間は測定していない
-        ]);
+        try {
+            $stmt = $pdo->prepare("INSERT INTO ai_generation_logs (article_id, ai_model, prompt, response, generation_time) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $articleId,
+                $aiModel,
+                $articlePrompt,
+                $content,
+                0 // 実際の生成時間は測定していない
+            ]);
+        } catch (Exception $e) {
+            // ログ保存エラーは無視して処理を続行
+        }
         
         // 更新された記事を取得
         $stmt = $pdo->prepare("SELECT * FROM articles WHERE id = ?");
@@ -224,6 +294,8 @@ function generateArticle($articleId, $aiModel) {
             'success' => true,
             'article' => $updatedArticle
         ];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
         return ['success' => false, 'error' => $e->getMessage()];
     }
@@ -321,6 +393,73 @@ function exportCsv($siteId) {
     }
 }
 
+function addArticleOutline($siteId, $aiModel) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // サイト情報取得
+        $stmt = $pdo->prepare("SELECT * FROM sites WHERE id = ?");
+        $stmt->execute([$siteId]);
+        $site = $stmt->fetch();
+        
+        if (!$site) {
+            return ['success' => false, 'error' => 'Site not found'];
+        }
+        
+        // 既存の記事数を確認
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM articles WHERE site_id = ?");
+        $stmt->execute([$siteId]);
+        $existingCount = $stmt->fetchColumn();
+        
+        // 記事概要を追加生成（10記事分）
+        $aiService = new AIService();
+        $outlinePrompt = createAdditionalOutlinePrompt($site['analysis_result'], $existingCount);
+        $outlineData = $aiService->generateText($outlinePrompt, $aiModel);
+        
+        if (empty($outlineData)) {
+            return ['success' => false, 'error' => 'AI service returned empty response'];
+        }
+        
+        // 記事概要をパース
+        $articles = parseArticleOutline($outlineData);
+        
+        if (empty($articles)) {
+            return ['success' => false, 'error' => 'Failed to parse article outline'];
+        }
+        
+        // DBに保存
+        $stmt = $pdo->prepare("INSERT INTO articles (site_id, title, seo_keywords, summary, ai_model, status) VALUES (?, ?, ?, ?, ?, 'draft')");
+        
+        foreach ($articles as $article) {
+            if (empty($article['title']) || empty($article['keywords']) || empty($article['summary'])) {
+                continue; // 不完全な記事データはスキップ
+            }
+            
+            $stmt->execute([
+                $siteId,
+                $article['title'],
+                $article['keywords'],
+                $article['summary'],
+                $aiModel
+            ]);
+        }
+        
+        // 全記事一覧を取得
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$siteId]);
+        $allArticles = $stmt->fetchAll();
+        
+        return [
+            'success' => true,
+            'articles' => $allArticles
+        ];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
 function fetchWebContent($url) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
@@ -379,6 +518,20 @@ function createOutlinePrompt($analysisResult) {
     $prompt .= "キーワード: [SEOキーワード（カンマ区切り）]\n";
     $prompt .= "概要: [記事の概要]\n\n";
     $prompt .= "（100記事まで繰り返し）\n";
+    
+    return $prompt;
+}
+
+function createAdditionalOutlinePrompt($analysisResult, $existingCount) {
+    $prompt = "以下のサイト分析結果を基に、占い好きな人向けのコラム記事を10記事追加で作成してください。\n\n";
+    $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
+    $prompt .= "既に{$existingCount}記事が存在するため、重複しない新しい記事を作成してください。\n\n";
+    $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで10記事分出力してください：\n\n";
+    $prompt .= "---記事1---\n";
+    $prompt .= "タイトル: [記事タイトル]\n";
+    $prompt .= "キーワード: [SEOキーワード（カンマ区切り）]\n";
+    $prompt .= "概要: [記事の概要]\n\n";
+    $prompt .= "（10記事まで繰り返し）\n";
     
     return $prompt;
 }

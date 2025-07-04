@@ -42,11 +42,23 @@ class AIConfig {
         switch ($model) {
             case 'gpt-4':
             case 'gpt-4o':
-                return $_ENV['OPENAI_API_KEY'] ?? '';
+                $key = $_ENV['OPENAI_API_KEY'] ?? '';
+                if (empty($key)) {
+                    throw new Exception("OpenAI API key not configured. Please set OPENAI_API_KEY in .env file.");
+                }
+                return $key;
             case 'claude-4-sonnet':
-                return $_ENV['CLAUDE_API_KEY'] ?? '';
+                $key = $_ENV['CLAUDE_API_KEY'] ?? '';
+                if (empty($key)) {
+                    throw new Exception("Claude API key not configured. Please set CLAUDE_API_KEY in .env file.");
+                }
+                return $key;
             case 'gemini-2.0-flash':
-                return $_ENV['GEMINI_API_KEY'] ?? '';
+                $key = $_ENV['GEMINI_API_KEY'] ?? '';
+                if (empty($key)) {
+                    throw new Exception("Gemini API key not configured. Please set GEMINI_API_KEY in .env file.");
+                }
+                return $key;
             default:
                 throw new Exception("Unsupported AI model: " . $model);
         }
