@@ -1,10 +1,9 @@
 class AutoGenerationManager {
     constructor() {
-        this.worker = null;
-        this.isRunning = false;
+        this.siteWorkers = new Map(); // サイトIDをキーとしてWorkerを管理
+        this.siteStatuses = new Map(); // サイトIDをキーとしてステータスを管理
         this.initializeElements();
         this.bindEvents();
-        this.initializeWorker();
     }
 
     initializeElements() {
@@ -22,30 +21,46 @@ class AutoGenerationManager {
         this.stopAutoGenerationBtn.addEventListener('click', () => this.stopAutoGeneration());
     }
 
-    initializeWorker() {
-        // Service Workerを強制更新するためにタイムスタンプを追加
+    createWorkerForSite(siteId) {
+        if (this.siteWorkers.has(siteId)) {
+            return this.siteWorkers.get(siteId);
+        }
+
+        // サイト専用のWorkerを作成
         const timestamp = Date.now();
-        this.worker = new Worker(`service-worker.js?v=${timestamp}`);
+        const worker = new Worker(`service-worker.js?v=${timestamp}&siteId=${siteId}`);
         
-        this.worker.onmessage = (event) => {
+        worker.onmessage = (event) => {
             const { type, data } = event.data;
             
             switch (type) {
                 case 'STATUS_UPDATE':
-                    this.updateStatus(data);
+                    this.updateStatus(siteId, data);
                     break;
                 case 'ERROR':
-                    this.showError(data.message);
+                    this.showError(siteId, data.message);
                     break;
             }
         };
         
-        console.log('Worker initialized with version:', timestamp);
+        this.siteWorkers.set(siteId, worker);
+        this.siteStatuses.set(siteId, { isRunning: false, progress: 0, generatedCount: 0, totalArticles: 0 });
+        
+        console.log(`Worker initialized for site ${siteId} with version:`, timestamp);
+        return worker;
     }
 
     startAutoGeneration() {
         if (!window.satelliteSystem.currentSiteId) {
             alert('まずサイト分析を実行してください。');
+            return;
+        }
+
+        const siteId = window.satelliteSystem.currentSiteId;
+        const currentStatus = this.siteStatuses.get(siteId);
+        
+        if (currentStatus && currentStatus.isRunning) {
+            alert('このサイトは既に自動生成中です。');
             return;
         }
 
@@ -55,15 +70,15 @@ class AutoGenerationManager {
             return;
         }
 
-        this.isRunning = true;
-        this.startAutoGenerationBtn.disabled = true;
-        this.stopAutoGenerationBtn.disabled = false;
-        this.autoGenerationStatus.style.display = 'block';
+        const worker = this.createWorkerForSite(siteId);
+        
+        // 現在のサイトのUIを更新
+        this.updateUIForSite(siteId, true);
 
-        this.worker.postMessage({
+        worker.postMessage({
             type: 'START_AUTO_GENERATION',
             data: {
-                siteId: window.satelliteSystem.currentSiteId,
+                siteId: siteId,
                 aiModel: window.satelliteSystem.aiModelSelect.value,
                 articleCount: articleCount
             }
@@ -71,14 +86,32 @@ class AutoGenerationManager {
     }
 
     stopAutoGeneration() {
-        this.worker.postMessage({ type: 'STOP_AUTO_GENERATION' });
-        this.isRunning = false;
-        this.startAutoGenerationBtn.disabled = false;
-        this.stopAutoGenerationBtn.disabled = true;
+        if (!window.satelliteSystem.currentSiteId) {
+            return;
+        }
+
+        const siteId = window.satelliteSystem.currentSiteId;
+        const worker = this.siteWorkers.get(siteId);
+        
+        if (worker) {
+            worker.postMessage({ type: 'STOP_AUTO_GENERATION' });
+        }
+        
+        // 現在のサイトのUIを更新
+        this.updateUIForSite(siteId, false);
     }
 
-    updateStatus(data) {
-        this.isRunning = data.isRunning;
+    updateStatus(siteId, data) {
+        // サイトのステータスを更新
+        this.siteStatuses.set(siteId, data);
+        
+        // 現在表示中のサイトのみUIを更新
+        if (siteId === window.satelliteSystem.currentSiteId) {
+            this.updateUIFromStatus(data);
+        }
+    }
+
+    updateUIFromStatus(data) {
         this.startAutoGenerationBtn.disabled = data.isRunning;
         this.stopAutoGenerationBtn.disabled = !data.isRunning;
         
@@ -96,17 +129,89 @@ class AutoGenerationManager {
 
         if (!data.isRunning) {
             setTimeout(() => {
-                this.autoGenerationStatus.style.display = 'none';
-                window.satelliteSystem.loadSiteData(window.satelliteSystem.currentSiteId);
+                // 現在のサイトで処理が終了した場合のみ非表示
+                if (window.satelliteSystem.currentSiteId) {
+                    const currentStatus = this.siteStatuses.get(window.satelliteSystem.currentSiteId);
+                    if (!currentStatus || !currentStatus.isRunning) {
+                        this.autoGenerationStatus.style.display = 'none';
+                        window.satelliteSystem.loadSiteData(window.satelliteSystem.currentSiteId);
+                    }
+                }
             }, 3000);
         }
     }
 
-    showError(message) {
-        alert('エラー: ' + message);
-        this.isRunning = false;
-        this.startAutoGenerationBtn.disabled = false;
-        this.stopAutoGenerationBtn.disabled = true;
+    updateUIForSite(siteId, isRunning) {
+        if (siteId === window.satelliteSystem.currentSiteId) {
+            this.startAutoGenerationBtn.disabled = isRunning;
+            this.stopAutoGenerationBtn.disabled = !isRunning;
+            if (isRunning) {
+                this.autoGenerationStatus.style.display = 'block';
+            }
+        }
+    }
+
+    showError(siteId, message) {
+        // 現在表示中のサイトのエラーのみ表示
+        if (siteId === window.satelliteSystem.currentSiteId) {
+            alert('エラー: ' + message);
+        }
+        
+        // サイトのステータスを更新
+        this.siteStatuses.set(siteId, { isRunning: false, progress: 0, generatedCount: 0, totalArticles: 0 });
+        
+        // 現在表示中のサイトのUIを更新
+        if (siteId === window.satelliteSystem.currentSiteId) {
+            this.startAutoGenerationBtn.disabled = false;
+            this.stopAutoGenerationBtn.disabled = true;
+        }
+    }
+
+    // 自動生成表示を更新する
+    updateAutoGenerationDisplay() {
+        const currentSiteId = window.satelliteSystem.currentSiteId;
+        
+        if (!currentSiteId) {
+            this.autoGenerationStatus.style.display = 'none';
+            this.startAutoGenerationBtn.disabled = false;
+            this.stopAutoGenerationBtn.disabled = true;
+            return;
+        }
+        
+        const currentStatus = this.siteStatuses.get(currentSiteId);
+        
+        if (currentStatus && currentStatus.isRunning) {
+            // 現在のサイトで処理中の場合は表示
+            this.autoGenerationStatus.style.display = 'block';
+            this.startAutoGenerationBtn.disabled = true;
+            this.stopAutoGenerationBtn.disabled = false;
+            this.updateUIFromStatus(currentStatus);
+        } else {
+            // 現在のサイトで処理中でない場合は非表示
+            this.autoGenerationStatus.style.display = 'none';
+            this.startAutoGenerationBtn.disabled = false;
+            this.stopAutoGenerationBtn.disabled = true;
+        }
+    }
+
+    // サイト切り替え時に呼び出される
+    onSiteChanged(newSiteId) {
+        this.updateAutoGenerationDisplay();
+    }
+
+    // 全てのサイトの処理状況を取得
+    getAllSiteStatuses() {
+        return Array.from(this.siteStatuses.entries()).filter(([siteId, status]) => status.isRunning);
+    }
+
+    // Workerをクリーンアップ
+    terminateWorkerForSite(siteId) {
+        const worker = this.siteWorkers.get(siteId);
+        if (worker) {
+            worker.terminate();
+            this.siteWorkers.delete(siteId);
+        }
+        this.siteStatuses.delete(siteId);
     }
 }
 
@@ -257,6 +362,8 @@ class SatelliteColumnSystem {
             this.articles = [];
             this.analysisSection.style.display = 'none';
             this.articleOutlineSection.style.display = 'none';
+            // サイト切り替え時にステータス表示を更新
+            this.autoGenerationManager.onSiteChanged(null);
             return;
         }
 
@@ -279,6 +386,8 @@ class SatelliteColumnSystem {
             if (result.success) {
                 this.currentSiteId = siteId;
                 this.displaySiteData(result.data);
+                // サイト切り替え時にステータス表示を更新
+                this.autoGenerationManager.onSiteChanged(siteId);
             }
         } catch (error) {
             console.error('サイトデータ読み込みエラー:', error);

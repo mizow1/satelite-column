@@ -1,14 +1,8 @@
-// Service Worker Version 2.0 - デバッグ強化版
+// Service Worker Version 3.0 - マルチサイト対応版
 class AutoGenerationWorker {
     constructor() {
-        this.isRunning = false;
-        this.currentTask = null;
-        this.totalArticles = 0;
-        this.generatedCount = 0;
-        this.config = null;
-        this.siteId = null;
-        this.aiModel = null;
-        this.version = '2.0';
+        this.runningTasks = new Map(); // サイトID → タスク情報のマップ
+        this.version = '3.0';
         console.log('AutoGenerationWorker initialized - version:', this.version);
         this.init();
     }
@@ -22,57 +16,73 @@ class AutoGenerationWorker {
                     this.startAutoGeneration(data);
                     break;
                 case 'STOP_AUTO_GENERATION':
-                    this.stopAutoGeneration();
+                    // 現在はdata.siteIdがないので、URLパラメータから取得
+                    const urlParams = new URLSearchParams(self.location.search);
+                    const siteId = urlParams.get('siteId') || data.siteId;
+                    this.stopAutoGeneration(siteId);
                     break;
                 case 'GET_STATUS':
-                    this.sendStatus();
+                    this.sendStatus(data.siteId);
                     break;
             }
         });
     }
 
     async startAutoGeneration(config) {
-        if (this.isRunning) {
-            this.sendMessage('ERROR', { message: '既に自動生成が実行中です' });
+        const siteId = config.siteId;
+        
+        if (this.runningTasks.has(siteId)) {
+            this.sendMessage('ERROR', { message: `サイト${siteId}は既に自動生成が実行中です`, siteId });
             return;
         }
 
-        this.isRunning = true;
-        this.config = config;
-        this.siteId = config.siteId;
-        this.aiModel = config.aiModel;
-        this.totalArticles = config.articleCount || 50;
-        this.generatedCount = 0;
+        const taskInfo = {
+            isRunning: true,
+            siteId: siteId,
+            aiModel: config.aiModel,
+            totalArticles: config.articleCount || 50,
+            generatedCount: 0,
+            config: config
+        };
+        
+        this.runningTasks.set(siteId, taskInfo);
 
         this.sendMessage('STATUS_UPDATE', {
             isRunning: true,
             message: '自動生成を開始しました',
             progress: 0,
-            totalArticles: this.totalArticles,
-            generatedCount: 0
+            totalArticles: taskInfo.totalArticles,
+            generatedCount: 0,
+            siteId: siteId
         });
 
         try {
-            await this.generateArticlesSequentially();
+            await this.generateArticlesSequentially(siteId);
         } catch (error) {
-            this.sendMessage('ERROR', { message: 'エラーが発生しました: ' + error.message });
+            this.sendMessage('ERROR', { message: 'エラーが発生しました: ' + error.message, siteId });
         } finally {
-            this.isRunning = false;
+            const finalTaskInfo = this.runningTasks.get(siteId);
+            this.runningTasks.delete(siteId);
+            
             this.sendMessage('STATUS_UPDATE', {
                 isRunning: false,
                 message: '自動生成が完了しました',
                 progress: 100,
-                totalArticles: this.totalArticles,
-                generatedCount: this.generatedCount
+                totalArticles: finalTaskInfo ? finalTaskInfo.totalArticles : 0,
+                generatedCount: finalTaskInfo ? finalTaskInfo.generatedCount : 0,
+                siteId: siteId
             });
         }
     }
 
-    async generateArticlesSequentially() {
-        while (this.isRunning && this.generatedCount < this.totalArticles) {
+    async generateArticlesSequentially(siteId) {
+        const taskInfo = this.runningTasks.get(siteId);
+        if (!taskInfo) return;
+        
+        while (taskInfo.isRunning && taskInfo.generatedCount < taskInfo.totalArticles) {
             try {
                 // 記事概要を10件追加
-                const outlineResult = await this.addArticleOutline();
+                const outlineResult = await this.addArticleOutline(siteId, taskInfo.aiModel);
                 if (!outlineResult.success) {
                     throw new Error('記事概要の追加に失敗しました');
                 }
@@ -81,27 +91,29 @@ class AutoGenerationWorker {
                 const articles = outlineResult.articles.filter(article => article.status === 'draft');
                 const batchSize = Math.min(10, articles.length);
                 
-                for (let i = 0; i < batchSize && this.isRunning && this.generatedCount < this.totalArticles; i++) {
+                for (let i = 0; i < batchSize && taskInfo.isRunning && taskInfo.generatedCount < taskInfo.totalArticles; i++) {
                     const article = articles[i];
                     
                     this.sendMessage('STATUS_UPDATE', {
                         isRunning: true,
                         message: `記事を生成中: ${article.title}`,
-                        progress: (this.generatedCount / this.totalArticles) * 100,
-                        totalArticles: this.totalArticles,
-                        generatedCount: this.generatedCount,
-                        currentArticle: article.title
+                        progress: (taskInfo.generatedCount / taskInfo.totalArticles) * 100,
+                        totalArticles: taskInfo.totalArticles,
+                        generatedCount: taskInfo.generatedCount,
+                        currentArticle: article.title,
+                        siteId: siteId
                     });
 
-                    const result = await this.generateArticle(article.id);
+                    const result = await this.generateArticle(article.id, taskInfo.aiModel);
                     if (result.success) {
-                        this.generatedCount++;
+                        taskInfo.generatedCount++;
                         this.sendMessage('STATUS_UPDATE', {
                             isRunning: true,
                             message: `記事を生成しました: ${article.title}`,
-                            progress: (this.generatedCount / this.totalArticles) * 100,
-                            totalArticles: this.totalArticles,
-                            generatedCount: this.generatedCount
+                            progress: (taskInfo.generatedCount / taskInfo.totalArticles) * 100,
+                            totalArticles: taskInfo.totalArticles,
+                            generatedCount: taskInfo.generatedCount,
+                            siteId: siteId
                         });
                     }
 
@@ -113,8 +125,8 @@ class AutoGenerationWorker {
                 await this.sleep(5000);
 
             } catch (error) {
-                console.error('Batch processing error:', error);
-                this.sendMessage('ERROR', { message: 'バッチ処理中にエラーが発生しました: ' + error.message });
+                console.error(`Batch processing error for site ${siteId}:`, error);
+                this.sendMessage('ERROR', { message: 'バッチ処理中にエラーが発生しました: ' + error.message, siteId });
                 
                 // 連続するエラーの場合は処理を中断
                 if (error.message.includes('サーバーからHTMLレスポンスが返されました') || 
@@ -128,14 +140,14 @@ class AutoGenerationWorker {
         }
     }
 
-    async addArticleOutline() {
+    async addArticleOutline(siteId, aiModel) {
         const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'add_article_outline',
-                site_id: this.siteId,
-                ai_model: this.aiModel
+                site_id: siteId,
+                ai_model: aiModel
             })
         });
 
@@ -168,14 +180,14 @@ class AutoGenerationWorker {
         }
     }
 
-    async generateArticle(articleId) {
+    async generateArticle(articleId, aiModel) {
         const response = await fetch('api.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'generate_article',
                 article_id: articleId,
-                ai_model: this.aiModel
+                ai_model: aiModel
             })
         });
 
@@ -208,25 +220,48 @@ class AutoGenerationWorker {
         }
     }
 
-    stopAutoGeneration() {
-        this.isRunning = false;
-        this.sendMessage('STATUS_UPDATE', {
-            isRunning: false,
-            message: '自動生成を停止しました',
-            progress: (this.generatedCount / this.totalArticles) * 100,
-            totalArticles: this.totalArticles,
-            generatedCount: this.generatedCount
-        });
+    stopAutoGeneration(siteId) {
+        const taskInfo = this.runningTasks.get(siteId);
+        if (taskInfo) {
+            taskInfo.isRunning = false;
+            this.sendMessage('STATUS_UPDATE', {
+                isRunning: false,
+                message: '自動生成を停止しました',
+                progress: (taskInfo.generatedCount / taskInfo.totalArticles) * 100,
+                totalArticles: taskInfo.totalArticles,
+                generatedCount: taskInfo.generatedCount,
+                siteId: siteId
+            });
+            this.runningTasks.delete(siteId);
+        }
     }
 
-    sendStatus() {
-        this.sendMessage('STATUS_UPDATE', {
-            isRunning: this.isRunning,
-            message: this.isRunning ? '自動生成実行中' : '自動生成停止中',
-            progress: this.totalArticles > 0 ? (this.generatedCount / this.totalArticles) * 100 : 0,
-            totalArticles: this.totalArticles,
-            generatedCount: this.generatedCount
-        });
+    sendStatus(siteId) {
+        if (siteId) {
+            const taskInfo = this.runningTasks.get(siteId);
+            if (taskInfo) {
+                this.sendMessage('STATUS_UPDATE', {
+                    isRunning: taskInfo.isRunning,
+                    message: taskInfo.isRunning ? '自動生成実行中' : '自動生成停止中',
+                    progress: taskInfo.totalArticles > 0 ? (taskInfo.generatedCount / taskInfo.totalArticles) * 100 : 0,
+                    totalArticles: taskInfo.totalArticles,
+                    generatedCount: taskInfo.generatedCount,
+                    siteId: siteId
+                });
+            }
+        } else {
+            // 全サイトのステータスを送信
+            for (const [id, taskInfo] of this.runningTasks.entries()) {
+                this.sendMessage('STATUS_UPDATE', {
+                    isRunning: taskInfo.isRunning,
+                    message: taskInfo.isRunning ? '自動生成実行中' : '自動生成停止中',
+                    progress: taskInfo.totalArticles > 0 ? (taskInfo.generatedCount / taskInfo.totalArticles) * 100 : 0,
+                    totalArticles: taskInfo.totalArticles,
+                    generatedCount: taskInfo.generatedCount,
+                    siteId: id
+                });
+            }
+        }
     }
 
     sendMessage(type, data) {
