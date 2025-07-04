@@ -254,6 +254,7 @@ class SatelliteColumnSystem {
     async loadSiteData(siteId) {
         if (!siteId) {
             this.currentSiteId = null;
+            this.articles = [];
             this.analysisSection.style.display = 'none';
             this.articleOutlineSection.style.display = 'none';
             return;
@@ -261,6 +262,10 @@ class SatelliteColumnSystem {
 
         this.showLoading();
         try {
+            // 古い記事データをクリア
+            this.articles = [];
+            this.articleOutlineSection.style.display = 'none';
+            
             const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -292,6 +297,10 @@ class SatelliteColumnSystem {
             this.articles = data.articles;
             this.displayArticleOutline();
             this.articleOutlineSection.style.display = 'block';
+        } else {
+            // サイトID 2の場合、記事が存在しない場合の処理
+            this.articles = [];
+            this.articleOutlineSection.style.display = 'none';
         }
     }
 
