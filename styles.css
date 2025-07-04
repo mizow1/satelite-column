@@ -211,6 +211,11 @@ header p {
     background: #f8f9fa;
     font-weight: bold;
 }
+.article-table .publish-date-input{
+    border: 1px solid #ccc;
+    padding: .5em;
+    border-radius: .5em;
+}
 
 .generate-article-btn {
     background: #3742fa;

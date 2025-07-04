@@ -90,6 +90,12 @@ try {
             }
             exportCsv($input['site_id']);
             break;
+        case 'update_publish_date':
+            if (!isset($input['article_id']) || !isset($input['publish_date'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_id and publish_date are required']);
+            }
+            sendJsonResponse(updatePublishDate($input['article_id'], $input['publish_date']));
+            break;
         default:
             sendJsonResponse(['success' => false, 'error' => 'Invalid action']);
     }
@@ -372,7 +378,7 @@ function exportCsv($siteId) {
         fputs($output, "\xEF\xBB\xBF");
         
         // ヘッダー
-        fputcsv($output, ['ID', 'タイトル', 'SEOキーワード', '概要', '記事内容', '作成日']);
+        fputcsv($output, ['ID', 'タイトル', 'SEOキーワード', '概要', '記事内容', '投稿日時', '作成日']);
         
         // データ
         foreach ($articles as $article) {
@@ -382,6 +388,7 @@ function exportCsv($siteId) {
                 $article['seo_keywords'],
                 $article['summary'],
                 $article['content'],
+                $article['publish_date'],
                 $article['created_at']
             ]);
         }
@@ -640,5 +647,30 @@ function sanitizeTextContent($text) {
     
     // 前後の空白を削除
     return trim($text);
+}
+
+function updatePublishDate($articleId, $publishDate) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 記事の存在確認
+        $stmt = $pdo->prepare("SELECT id FROM articles WHERE id = ?");
+        $stmt->execute([$articleId]);
+        $article = $stmt->fetch();
+        
+        if (!$article) {
+            return ['success' => false, 'error' => 'Article not found'];
+        }
+        
+        // 投稿日時を更新
+        $stmt = $pdo->prepare("UPDATE articles SET publish_date = ? WHERE id = ?");
+        $stmt->execute([$publishDate, $articleId]);
+        
+        return ['success' => true, 'message' => 'Publish date updated successfully'];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
 }
 ?>

@@ -499,6 +499,7 @@ class SatelliteColumnSystem {
                         <th>記事タイトル</th>
                         <th>SEOキーワード</th>
                         <th>概要</th>
+                        <th>投稿日時</th>
                         <th>ステータス</th>
                         <th>操作</th>
                     </tr>
@@ -513,6 +514,13 @@ class SatelliteColumnSystem {
                             </td>
                             <td>${article.seo_keywords}</td>
                             <td>${article.summary}</td>
+                            <td>
+                                <input type="datetime-local" 
+                                       class="publish-date-input" 
+                                       data-article-id="${article.id}"
+                                       value="${this.formatDateTimeLocal(article.publish_date)}"
+                                       onchange="window.satelliteSystem.updatePublishDate(${article.id}, this.value)">
+                            </td>
                             <td><span class="status-${article.status}">${this.getStatusText(article.status)}</span></td>
                             <td>
                                 ${article.status !== 'generated' ? 
@@ -538,6 +546,48 @@ class SatelliteColumnSystem {
                 this.showArticleDetail(articleId);
             }
         });
+    }
+
+    formatDateTimeLocal(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return '';
+        
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    async updatePublishDate(articleId, publishDate) {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_publish_date',
+                    article_id: articleId,
+                    publish_date: publishDate
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                // 記事データを更新
+                const articleIndex = this.articles.findIndex(a => a.id == articleId);
+                if (articleIndex !== -1) {
+                    this.articles[articleIndex].publish_date = publishDate;
+                }
+            } else {
+                alert('投稿日時の更新に失敗しました: ' + result.error);
+            }
+        } catch (error) {
+            console.error('投稿日時更新エラー:', error);
+            alert('投稿日時の更新中にエラーが発生しました。');
+        }
     }
 
     getStatusText(status) {

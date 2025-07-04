@@ -22,6 +22,7 @@ CREATE TABLE articles (
     content TEXT,
     ai_model VARCHAR(50),
     status ENUM('draft', 'generated', 'published') DEFAULT 'draft',
+    publish_date DATETIME DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
