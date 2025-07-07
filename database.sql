@@ -19,7 +19,7 @@ CREATE TABLE articles (
     title VARCHAR(500) NOT NULL,
     seo_keywords TEXT,
     summary TEXT,
-    content TEXT,
+    content LONGTEXT,
     ai_model VARCHAR(50),
     status ENUM('draft', 'generated', 'published') DEFAULT 'draft',
     publish_date DATETIME DEFAULT NULL,

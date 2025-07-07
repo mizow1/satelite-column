@@ -37,7 +37,7 @@ class AIService {
                     'content' => $cleanPrompt
                 ]
             ],
-            'max_tokens' => 4000,
+            'max_tokens' => 16000,
             'temperature' => 0.7
         ];
         
@@ -105,7 +105,7 @@ class AIService {
         
         $data = [
             'model' => 'claude-3-5-sonnet-20241022',
-            'max_tokens' => 4000,
+            'max_tokens' => 16000,
             'temperature' => 0.7,
             'system' => 'あなたは占い好きな人向けのコラム記事を作成する専門家です。SEOを意識し、読みやすく興味深い記事を作成してください。',
             'messages' => [
@@ -150,30 +150,35 @@ class AIService {
             throw new Exception("Gemini API key not configured");
         }
         
+        // UTF-8文字列のサニタイズ
+        $cleanPrompt = $this->sanitizeUtf8($prompt);
+        
         $data = [
             'contents' => [
                 [
+                    'role' => 'user',
                     'parts' => [
                         [
-                            'text' => 'あなたは占い好きな人向けのコラム記事を作成する専門家です。SEOを意識し、読みやすく興味深い記事を作成してください。\n\n' . $prompt
+                            'text' => 'あなたは占い好きな人向けのコラム記事を作成する専門家です。SEOを意識し、読みやすく興味深い記事を作成してください。\n\n' . $cleanPrompt
                         ]
                     ]
                 ]
             ],
             'generationConfig' => [
-                'maxOutputTokens' => 4000,
+                'maxOutputTokens' => 16000,
                 'temperature' => 0.7
             ]
         ];
         
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' . $apiKey);
+        curl_setopt($ch, CURLOPT_URL, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' . $apiKey);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json'
         ]);
+        
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
         
         $response = curl_exec($ch);
@@ -181,7 +186,10 @@ class AIService {
         curl_close($ch);
         
         if ($httpCode !== 200) {
-            throw new Exception("Gemini API error: HTTP " . $httpCode);
+            error_log("Gemini Response: " . $response);
+            $errorInfo = json_decode($response, true);
+            $errorMessage = $errorInfo['error']['message'] ?? 'Unknown error';
+            throw new Exception("Gemini API error: HTTP " . $httpCode . " - " . $errorMessage);
         }
         
         $result = json_decode($response, true);
