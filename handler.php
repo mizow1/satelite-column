@@ -746,7 +746,7 @@ function extractSiteName($url) {
 }
 
 function createAnalysisPrompt($siteContents) {
-    $prompt = "以下のサイトの内容を分析して、占い好きな人に向けたコラム記事を作成するための特徴とキーワードを分析してください。\n\n";
+    $prompt = "以下のサイトの内容を分析して、このサイトに最適化されたコラム記事を作成するための特徴とキーワードを分析してください。\n\n";
     
     foreach ($siteContents as $site) {
         $prompt .= "URL: " . $site['url'] . "\n";
@@ -754,11 +754,13 @@ function createAnalysisPrompt($siteContents) {
     }
     
     $prompt .= "以下の観点で分析し、マークダウン形式で出力してください：\n";
-    $prompt .= "1. サイトの特徴\n";
-    $prompt .= "2. 占い好きな人が興味を持ちそうなポイント\n";
-    $prompt .= "3. SEOに有効なキーワード\n";
-    $prompt .= "4. コンテンツの傾向\n";
+    $prompt .= "1. サイトの特徴とテーマ\n";
+    $prompt .= "2. ターゲット読者層と興味関心\n";
+    $prompt .= "3. SEOに有効なキーワード（主要キーワード、関連キーワード、ロングテールキーワード）\n";
+    $prompt .= "4. コンテンツの傾向とトーン\n";
     $prompt .= "5. 記事作成時の注意点\n";
+    $prompt .= "6. 競合他社分析と差別化ポイント\n";
+    $prompt .= "7. 検索意図と読者のニーズ\n";
     
     return $prompt;
 }
@@ -772,17 +774,18 @@ function createGroupAnalysisPrompt($siteContents, $groupIndex, $totalGroups) {
     }
     
     $prompt .= "このグループの特徴を以下の観点で分析し、簡潔にマークダウン形式で出力してください：\n";
-    $prompt .= "1. サイト群の特徴\n";
-    $prompt .= "2. 占い好きな人が興味を持ちそうなポイント\n";
-    $prompt .= "3. SEOに有効なキーワード\n";
-    $prompt .= "4. コンテンツの傾向\n";
+    $prompt .= "1. サイト群の特徴とテーマ\n";
+    $prompt .= "2. ターゲット読者層と興味関心\n";
+    $prompt .= "3. SEOに有効なキーワード（主要キーワード、関連キーワード、ロングテールキーワード）\n";
+    $prompt .= "4. コンテンツの傾向とトーン\n";
+    $prompt .= "5. 検索意図と読者のニーズ\n";
     $prompt .= "\n注意：これは複数グループの一部なので、他のグループと統合できるような形式で分析してください。\n";
     
     return $prompt;
 }
 
 function createIntegrationPrompt($analyses, $totalUrls) {
-    $prompt = "以下は複数のサイトグループ（合計{$totalUrls}個のURL）を分析した結果です。これらを統合して、占い好きな人に向けたコラム記事を作成するための総合的な分析を行ってください。\n\n";
+    $prompt = "以下は複数のサイトグループ（合計{$totalUrls}個のURL）を分析した結果です。これらを統合して、このサイトに最適化されたコラム記事を作成するための総合的な分析を行ってください。\n\n";
     
     foreach ($analyses as $index => $analysis) {
         $prompt .= "=== グループ" . ($index + 1) . "の分析結果 ===\n";
@@ -790,19 +793,27 @@ function createIntegrationPrompt($analyses, $totalUrls) {
     }
     
     $prompt .= "上記の分析結果を統合して、以下の観点で総合的な分析をマークダウン形式で出力してください：\n";
-    $prompt .= "1. 全体的なサイトの特徴\n";
-    $prompt .= "2. 占い好きな人が興味を持ちそうなポイント（重要度順）\n";
+    $prompt .= "1. 全体的なサイトの特徴とテーマ\n";
+    $prompt .= "2. ターゲット読者層と興味関心（重要度順）\n";
     $prompt .= "3. SEOに有効なキーワード（出現頻度と重要度を考慮）\n";
     $prompt .= "4. コンテンツの傾向と分析\n";
     $prompt .= "5. 記事作成時の注意点\n";
     $prompt .= "6. 推奨される記事戦略\n";
+    $prompt .= "7. 競合他社分析と差別化ポイント\n";
+    $prompt .= "8. 検索意図と読者のニーズ\n";
     
     return $prompt;
 }
 
 function createOutlinePrompt($analysisResult) {
-    $prompt = "以下のサイト分析結果を基に、占い好きな人向けのコラム記事を100記事分作成してください。\n\n";
+    $prompt = "以下のサイト分析結果を基に、サイトのテーマと読者層に最適化されたコラム記事を100記事分作成してください。\n\n";
     $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
+    $prompt .= "記事作成の要件：\n";
+    $prompt .= "- 分析結果のターゲット読者層に合わせた内容\n";
+    $prompt .= "- 検索意図を満たすSEO最適化されたタイトル\n";
+    $prompt .= "- 主要キーワード、関連キーワード、ロングテールキーワードを含む\n";
+    $prompt .= "- 読者のニーズに応える実用的で魅力的な内容\n";
+    $prompt .= "- 競合他社との差別化を図る独自の視点\n\n";
     $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで100記事分出力してください：\n\n";
     $prompt .= "---記事1---\n";
     $prompt .= "タイトル: [記事タイトル]\n";
@@ -814,9 +825,15 @@ function createOutlinePrompt($analysisResult) {
 }
 
 function createAdditionalOutlinePrompt($analysisResult, $existingCount) {
-    $prompt = "以下のサイト分析結果を基に、占い好きな人向けのコラム記事を10記事追加で作成してください。\n\n";
+    $prompt = "以下のサイト分析結果を基に、サイトのテーマと読者層に最適化されたコラム記事を10記事追加で作成してください。\n\n";
     $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
     $prompt .= "既に{$existingCount}記事が存在するため、重複しない新しい記事を作成してください。\n\n";
+    $prompt .= "記事作成の要件：\n";
+    $prompt .= "- 分析結果のターゲット読者層に合わせた内容\n";
+    $prompt .= "- 検索意図を満たすSEO最適化されたタイトル\n";
+    $prompt .= "- 主要キーワード、関連キーワード、ロングテールキーワードを含む\n";
+    $prompt .= "- 読者のニーズに応える実用的で魅力的な内容\n";
+    $prompt .= "- 競合他社との差別化を図る独自の視点\n\n";
     $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで10記事分出力してください：\n\n";
     $prompt .= "---記事1---\n";
     $prompt .= "タイトル: [記事タイトル]\n";
@@ -828,32 +845,41 @@ function createAdditionalOutlinePrompt($analysisResult, $existingCount) {
 }
 
 function createArticlePrompt($article) {
-    $prompt = "以下の記事概要を基に、占い好きな人向けの詳細なコラム記事を作成してください。\n\n";
+    $prompt = "以下の記事概要を基に、ターゲット読者に最適化された詳細なコラム記事を作成してください。\n\n";
     $prompt .= "タイトル: " . $article['title'] . "\n";
     $prompt .= "SEOキーワード: " . $article['seo_keywords'] . "\n";
     $prompt .= "概要: " . $article['summary'] . "\n\n";
     $prompt .= "記事の要件：\n";
     $prompt .= "- 必ず10,000文字以上の詳細な記事を作成する（これは最重要要件です）\n";
     $prompt .= "- 完全なマークダウン形式で出力する\n";
-    $prompt .= "- 占い好きな人が興味を持つ内容\n";
-    $prompt .= "- SEOを意識したキーワードの自然な配置\n";
-    $prompt .= "- 読みやすい構成（見出し、段落分け）\n";
+    $prompt .= "- ターゲット読者が求める価値のある内容\n";
+    $prompt .= "- SEOを意識したキーワードの自然な配置（キーワード密度2-3%程度）\n";
+    $prompt .= "- 読みやすい構成（見出し、段落分け、箇条書き）\n";
     $prompt .= "- 具体的で実用的な内容\n";
     $prompt .= "- 深い洞察と詳細な解説\n";
     $prompt .= "- 例や事例を豊富に含む\n";
     $prompt .= "- 実践的なアドバイスとガイダンス\n";
     $prompt .= "- 読者が最後まで読み続けられる魅力的な内容\n";
     $prompt .= "- 各セクションごとに詳しい説明を含む\n";
-    $prompt .= "- 占いの背景知識や歴史的な情報も含める\n";
+    $prompt .= "- 検索意図を満たす包括的な情報\n";
     $prompt .= "- 読者が実際に活用できる具体的な方法を提示\n";
+    $prompt .= "- 内部リンクの提案（関連記事の想定タイトル）\n";
     
     $prompt .= "\n記事構成の指針：\n";
-    $prompt .= "1. 導入部：読者の関心を引く導入\n";
-    $prompt .= "2. 基礎知識：テーマの基本的な説明\n";
-    $prompt .= "3. 詳細解説：具体的な内容の深掘り\n";
-    $prompt .= "4. 実践的な応用：読者が実践できる方法\n";
-    $prompt .= "5. 事例・体験談：具体的な例や体験談\n";
-    $prompt .= "6. まとめ・次のステップ：総括と今後の展望\n";
+    $prompt .= "1. 導入部：読者の関心を引く導入（問題提起、統計データ、興味深い事実）\n";
+    $prompt .= "2. 基礎知識：テーマの基本的な説明（初心者にもわかりやすく）\n";
+    $prompt .= "3. 詳細解説：具体的な内容の深掘り（専門性の高い情報）\n";
+    $prompt .= "4. 実践的な応用：読者が実践できる方法（ステップバイステップ）\n";
+    $prompt .= "5. 事例・体験談：具体的な例や体験談（信頼性の向上）\n";
+    $prompt .= "6. よくある質問：FAQ形式で疑問を解決\n";
+    $prompt .= "7. まとめ・次のステップ：総括と今後の展望\n";
+    
+    $prompt .= "\nSEO最適化の注意事項：\n";
+    $prompt .= "- タイトルタグとして使用できる魅力的なH1を含める\n";
+    $prompt .= "- メタディスクリプションとして使用できる要約を含める\n";
+    $prompt .= "- 関連キーワードを自然に文章に組み込む\n";
+    $prompt .= "- 読者の検索意図（情報収集、比較検討、購入意向）を意識した内容\n";
+    $prompt .= "- E-A-T（専門性・権威性・信頼性）を意識した記述\n";
     
     $prompt .= "\n重要な注意事項：\n";
     $prompt .= "- 省略表現（「[以下、さらに詳細な解説と実践的なアドバイスが続きます...]」など）は絶対に使用しない\n";
@@ -861,6 +887,7 @@ function createArticlePrompt($article) {
     $prompt .= "- 必ず完全な記事を作成し、最後まで詳細に執筆する\n";
     $prompt .= "- 記事内に文字数や文字数カウントは一切記載しない\n";
     $prompt .= "- 各セクションは充実した内容で執筆する\n";
+    $prompt .= "- 独自性のある視点や情報を含める\n";
     
     return $prompt;
 }
