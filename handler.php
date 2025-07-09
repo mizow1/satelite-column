@@ -33,7 +33,12 @@ header('HTTP/1.1 200 OK');
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, User-Agent');
+
+// WAF対策：リクエストの詳細をログに記録
+error_log("User-Agent: " . ($_SERVER['HTTP_USER_AGENT'] ?? 'unknown'));
+error_log("X-Forwarded-For: " . ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? 'unknown'));
+error_log("Remote-Addr: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     header('HTTP/1.1 200 OK');
@@ -120,6 +125,18 @@ try {
                 sendJsonResponse(['success' => false, 'error' => 'urls and ai_model are required']);
             }
             sendJsonResponse(analyzeSites($input['urls'], $input['ai_model']));
+            break;
+        case 'analyze_sites_group':
+            if (!isset($input['urls']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'urls and ai_model are required']);
+            }
+            sendJsonResponse(analyzeSitesGroup($input['urls'], $input['ai_model'], $input['group_index'] ?? 1, $input['total_groups'] ?? 1));
+            break;
+        case 'integrate_analyses':
+            if (!isset($input['analyses']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'analyses and ai_model are required']);
+            }
+            sendJsonResponse(integrateAnalyses($input['analyses'], $input['ai_model'], $input['total_urls'] ?? 0));
             break;
         case 'create_article_outline':
             if (!isset($input['site_id']) || !isset($input['ai_model'])) {
@@ -279,6 +296,17 @@ function analyzeSites($urls, $aiModel) {
         
         // サイト情報をDBに保存
         $siteName = extractSiteName($urls[0]);
+        
+        // まず、ai_modelカラムが存在するかチェック
+        $checkSql = "SHOW COLUMNS FROM sites LIKE 'ai_model'";
+        $checkStmt = $pdo->query($checkSql);
+        $hasAiModelColumn = $checkStmt->rowCount() > 0;
+        
+        // デバッグ情報をログに記録
+        error_log("ai_model column exists: " . ($hasAiModelColumn ? 'yes' : 'no'));
+        error_log("Column count: " . $checkStmt->rowCount());
+        
+        // 一時的にai_modelカラムを使用しないでテスト
         $stmt = $pdo->prepare("INSERT INTO sites (name, url, analysis_result, features, keywords) VALUES (?, ?, ?, ?, ?)");
         $stmt->execute([
             $siteName,
@@ -289,6 +317,12 @@ function analyzeSites($urls, $aiModel) {
         ]);
         
         $siteId = $pdo->lastInsertId();
+        
+        // 後でai_modelを更新
+        if ($hasAiModelColumn) {
+            $updateStmt = $pdo->prepare("UPDATE sites SET ai_model = ? WHERE id = ?");
+            $updateStmt->execute([$aiModel, $siteId]);
+        }
         
         // AI使用ログを記録
         logAiUsage($siteId, null, $aiModel, 'site_analysis', $analysisPrompt, $analysis, $processingTime);
@@ -301,6 +335,93 @@ function analyzeSites($urls, $aiModel) {
             'success' => true,
             'site_id' => $siteId,
             'analysis' => $analysis
+        ];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function analyzeSitesGroup($urls, $aiModel, $groupIndex = 1, $totalGroups = 1) {
+    try {
+        // URLからサイト情報を取得
+        $siteContents = [];
+        foreach ($urls as $url) {
+            $content = fetchWebContent($url);
+            if ($content) {
+                $siteContents[] = [
+                    'url' => $url,
+                    'content' => $content
+                ];
+            }
+        }
+        
+        if (empty($siteContents)) {
+            return ['success' => false, 'error' => 'No valid content found'];
+        }
+        
+        // AIでサイト分析（グループ用プロンプト）
+        $aiService = new AIService();
+        $analysisPrompt = createGroupAnalysisPrompt($siteContents, $groupIndex, $totalGroups);
+        
+        $startTime = microtime(true);
+        $analysis = $aiService->generateText($analysisPrompt, $aiModel);
+        $processingTime = microtime(true) - $startTime;
+        
+        return [
+            'success' => true,
+            'analysis' => $analysis,
+            'group_index' => $groupIndex,
+            'urls_count' => count($urls)
+        ];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function integrateAnalyses($analyses, $aiModel, $totalUrls = 0) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 複数の分析結果を統合
+        $aiService = new AIService();
+        $integrationPrompt = createIntegrationPrompt($analyses, $totalUrls);
+        
+        $startTime = microtime(true);
+        $finalAnalysis = $aiService->generateText($integrationPrompt, $aiModel);
+        $processingTime = microtime(true) - $startTime;
+        
+        // 統合結果をDBに保存
+        $siteName = "統合分析結果 (" . count($analyses) . "グループ)";
+        
+        // ai_modelカラムの存在チェック
+        $checkSql = "SHOW COLUMNS FROM sites LIKE 'ai_model'";
+        $checkStmt = $pdo->query($checkSql);
+        $hasAiModelColumn = $checkStmt->rowCount() > 0;
+        
+        $stmt = $pdo->prepare("INSERT INTO sites (name, url, analysis_result, features, keywords) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $siteName,
+            json_encode([]), // 統合分析なのでURLは空
+            $finalAnalysis,
+            '', // 後で更新
+            ''  // 後で更新
+        ]);
+        
+        $siteId = $pdo->lastInsertId();
+        
+        // 後でai_modelを更新
+        if ($hasAiModelColumn) {
+            $updateStmt = $pdo->prepare("UPDATE sites SET ai_model = ? WHERE id = ?");
+            $updateStmt->execute([$aiModel, $siteId]);
+        }
+        
+        // AI使用ログを記録
+        logAiUsage($siteId, null, $aiModel, 'integration_analysis', $integrationPrompt, $finalAnalysis, $processingTime);
+        
+        return [
+            'success' => true,
+            'site_id' => $siteId,
+            'analysis' => $finalAnalysis
         ];
     } catch (Exception $e) {
         return ['success' => false, 'error' => $e->getMessage()];
@@ -633,6 +754,43 @@ function createAnalysisPrompt($siteContents) {
     $prompt .= "3. SEOに有効なキーワード\n";
     $prompt .= "4. コンテンツの傾向\n";
     $prompt .= "5. 記事作成時の注意点\n";
+    
+    return $prompt;
+}
+
+function createGroupAnalysisPrompt($siteContents, $groupIndex, $totalGroups) {
+    $prompt = "以下のサイトの内容を分析してください。これは全{$totalGroups}グループ中の{$groupIndex}番目のグループです。\n\n";
+    
+    foreach ($siteContents as $site) {
+        $prompt .= "URL: " . $site['url'] . "\n";
+        $prompt .= "内容: " . substr($site['content'], 0, 2000) . "...\n\n";
+    }
+    
+    $prompt .= "このグループの特徴を以下の観点で分析し、簡潔にマークダウン形式で出力してください：\n";
+    $prompt .= "1. サイト群の特徴\n";
+    $prompt .= "2. 占い好きな人が興味を持ちそうなポイント\n";
+    $prompt .= "3. SEOに有効なキーワード\n";
+    $prompt .= "4. コンテンツの傾向\n";
+    $prompt .= "\n注意：これは複数グループの一部なので、他のグループと統合できるような形式で分析してください。\n";
+    
+    return $prompt;
+}
+
+function createIntegrationPrompt($analyses, $totalUrls) {
+    $prompt = "以下は複数のサイトグループ（合計{$totalUrls}個のURL）を分析した結果です。これらを統合して、占い好きな人に向けたコラム記事を作成するための総合的な分析を行ってください。\n\n";
+    
+    foreach ($analyses as $index => $analysis) {
+        $prompt .= "=== グループ" . ($index + 1) . "の分析結果 ===\n";
+        $prompt .= $analysis . "\n\n";
+    }
+    
+    $prompt .= "上記の分析結果を統合して、以下の観点で総合的な分析をマークダウン形式で出力してください：\n";
+    $prompt .= "1. 全体的なサイトの特徴\n";
+    $prompt .= "2. 占い好きな人が興味を持ちそうなポイント（重要度順）\n";
+    $prompt .= "3. SEOに有効なキーワード（出現頻度と重要度を考慮）\n";
+    $prompt .= "4. コンテンツの傾向と分析\n";
+    $prompt .= "5. 記事作成時の注意点\n";
+    $prompt .= "6. 推奨される記事戦略\n";
     
     return $prompt;
 }

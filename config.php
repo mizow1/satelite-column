@@ -1,4 +1,10 @@
 <?php
+// 直接アクセス防止
+if (!defined('INCLUDED_FROM_API')) {
+    header('HTTP/1.0 403 Forbidden');
+    exit('Direct access is not allowed.');
+}
+
 // 環境変数読み込み
 if (file_exists('.env')) {
     $lines = file('.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);

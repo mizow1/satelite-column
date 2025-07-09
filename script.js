@@ -226,8 +226,6 @@ class SatelliteColumnSystem {
     initializeElements() {
         this.siteSelect = document.getElementById('site-select');
         this.aiModelSelect = document.getElementById('ai-model');
-        this.urlInputs = document.getElementById('url-inputs');
-        this.addUrlBtn = document.getElementById('add-url');
         this.analyzeSitesBtn = document.getElementById('analyze-sites');
         this.analysisSection = document.getElementById('analysis-section');
         this.analysisResult = document.getElementById('analysis-result');
@@ -239,61 +237,59 @@ class SatelliteColumnSystem {
         this.articleDetailModal = document.getElementById('article-detail-modal');
         this.loadingOverlay = document.getElementById('loading-overlay');
         
+        // 新しいURL解析関連の要素
+        this.baseUrlInput = document.getElementById('base-url-input');
+        this.crawlUrlsBtn = document.getElementById('crawl-urls');
+        this.crawlProgress = document.getElementById('crawl-progress');
+        this.crawlProgressFill = document.getElementById('crawl-progress-fill');
+        this.crawlProgressText = document.getElementById('crawl-progress-text');
+        this.urlListSection = document.getElementById('url-list-section');
+        this.urlList = document.getElementById('url-list');
+        this.addManualUrlBtn = document.getElementById('add-manual-url');
+        this.selectAllUrlsBtn = document.getElementById('select-all-urls');
+        this.deselectAllUrlsBtn = document.getElementById('deselect-all-urls');
+        
+        // AI使用ログ関連の要素
+        this.showAiLogsBtn = document.getElementById('show-ai-logs');
+        this.hideAiLogsBtn = document.getElementById('hide-ai-logs');
+        this.aiLogsSection = document.getElementById('ai-logs-section');
+        this.aiLogsContent = document.getElementById('ai-logs-content');
+        
         this.currentSiteId = null;
         this.articles = [];
+        this.discoveredUrls = [];
+        this.savedUrls = [];
     }
 
     bindEvents() {
-        this.addUrlBtn.addEventListener('click', () => this.addUrlInput());
-        this.analyzeSitesBtn.addEventListener('click', () => this.analyzeSites());
-        this.createArticleOutlineBtn.addEventListener('click', () => this.createArticleOutline());
-        this.generateAllArticlesBtn.addEventListener('click', () => this.generateAllArticles());
-        this.exportCsvBtn.addEventListener('click', () => this.exportCsv());
-        this.siteSelect.addEventListener('change', (e) => this.loadSiteData(e.target.value));
+        // 基本的なイベント
+        if (this.analyzeSitesBtn) this.analyzeSitesBtn.addEventListener('click', () => this.analyzeSites());
+        if (this.createArticleOutlineBtn) this.createArticleOutlineBtn.addEventListener('click', () => this.createArticleOutline());
+        if (this.generateAllArticlesBtn) this.generateAllArticlesBtn.addEventListener('click', () => this.generateAllArticles());
+        if (this.exportCsvBtn) this.exportCsvBtn.addEventListener('click', () => this.exportCsv());
+        if (this.siteSelect) this.siteSelect.addEventListener('change', (e) => this.loadSiteData(e.target.value));
+        
+        // 新しいURL解析関連のイベント
+        if (this.crawlUrlsBtn) this.crawlUrlsBtn.addEventListener('click', () => this.crawlSiteUrls());
+        if (this.addManualUrlBtn) this.addManualUrlBtn.addEventListener('click', () => this.addManualUrl());
+        if (this.selectAllUrlsBtn) this.selectAllUrlsBtn.addEventListener('click', () => this.selectAllUrls());
+        if (this.deselectAllUrlsBtn) this.deselectAllUrlsBtn.addEventListener('click', () => this.deselectAllUrls());
+        
+        // AI使用ログ関連のイベント
+        if (this.showAiLogsBtn) this.showAiLogsBtn.addEventListener('click', () => this.showAiLogs());
+        if (this.hideAiLogsBtn) this.hideAiLogsBtn.addEventListener('click', () => this.hideAiLogs());
         
         // モーダル関連
-        document.querySelector('.close').addEventListener('click', () => this.closeModal());
+        const closeBtn = document.querySelector('.close');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeModal());
+        
         window.addEventListener('click', (e) => {
             if (e.target === this.articleDetailModal) {
                 this.closeModal();
             }
         });
-        
-        // URL削除ボタンのイベント委譲
-        this.urlInputs.addEventListener('click', (e) => {
-            if (e.target.classList.contains('remove-url')) {
-                this.removeUrlInput(e.target.closest('.url-input-group'));
-            }
-        });
     }
 
-    addUrlInput() {
-        const urlInputGroup = document.createElement('div');
-        urlInputGroup.className = 'url-input-group';
-        urlInputGroup.innerHTML = `
-            <input type="url" placeholder="参照URLを入力" class="url-input">
-            <button type="button" class="remove-url">削除</button>
-        `;
-        this.urlInputs.appendChild(urlInputGroup);
-    }
-
-    removeUrlInput(urlInputGroup) {
-        if (this.urlInputs.children.length > 1) {
-            urlInputGroup.remove();
-        }
-    }
-
-    getValidUrls() {
-        const urlInputs = this.urlInputs.querySelectorAll('.url-input');
-        const urls = [];
-        urlInputs.forEach(input => {
-            const url = input.value.trim();
-            if (url) {
-                urls.push(url);
-            }
-        });
-        return urls;
-    }
 
     showLoading() {
         this.loadingOverlay.style.display = 'flex';
@@ -305,7 +301,7 @@ class SatelliteColumnSystem {
 
     async loadSites() {
         try {
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'get_sites' })
@@ -373,7 +369,7 @@ class SatelliteColumnSystem {
             this.articles = [];
             this.articleOutlineSection.style.display = 'none';
             
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -411,30 +407,314 @@ class SatelliteColumnSystem {
             this.articles = [];
             this.articleOutlineSection.style.display = 'none';
         }
+        
+        // 保存されている参照URLを取得して表示
+        this.loadReferenceUrls(this.currentSiteId);
     }
 
-    async analyzeSites() {
-        const urls = this.getValidUrls();
-        if (urls.length === 0) {
-            alert('少なくとも1つのURLを入力してください。');
+    async crawlSiteUrls() {
+        const baseUrl = this.baseUrlInput.value.trim();
+        if (!baseUrl) {
+            alert('ベースURLを入力してください。');
             return;
         }
 
-        this.showLoading();
+        this.crawlUrlsBtn.disabled = true;
+        this.crawlProgress.style.display = 'block';
+        this.crawlProgressText.textContent = 'URLを取得中...';
+        this.crawlProgressFill.style.width = '0%';
+
         try {
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    action: 'analyze_sites',
-                    urls: urls,
-                    ai_model: this.aiModelSelect.value
+                    action: 'crawl_site_urls',
+                    base_url: baseUrl
                 })
             });
             const result = await this.handleApiResponse(response);
             
             if (result.success) {
+                this.discoveredUrls = result.urls;
+                this.displayUrlList();
+                this.crawlProgressText.textContent = `${result.total_found}件のURLを発見しました`;
+                this.crawlProgressFill.style.width = '100%';
+                this.urlListSection.style.display = 'block';
+                this.analyzeSitesBtn.style.display = 'block';
+            } else {
+                alert('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('URL取得エラー:', error);
+            alert('URL取得中にエラーが発生しました。');
+        } finally {
+            this.crawlUrlsBtn.disabled = false;
+            setTimeout(() => {
+                this.crawlProgress.style.display = 'none';
+            }, 2000);
+        }
+    }
+
+    displayUrlList() {
+        const urlListHtml = this.discoveredUrls.map((url, index) => `
+            <div class="url-item" data-index="${index}">
+                <input type="checkbox" class="url-checkbox" data-url="${url}" checked>
+                <span class="url-text">${url}</span>
+                <button class="remove-url-btn" data-index="${index}">×</button>
+            </div>
+        `).join('');
+        
+        this.urlList.innerHTML = urlListHtml;
+        
+        // 削除ボタンのイベント
+        this.urlList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-url-btn')) {
+                const index = parseInt(e.target.dataset.index);
+                this.removeUrlFromList(index);
+            }
+        });
+    }
+
+    removeUrlFromList(index) {
+        this.discoveredUrls.splice(index, 1);
+        this.displayUrlList();
+    }
+
+    addManualUrl() {
+        const url = prompt('追加するURLを入力してください:');
+        if (url && url.trim()) {
+            this.discoveredUrls.push(url.trim());
+            this.displayUrlList();
+        }
+    }
+
+    selectAllUrls() {
+        const checkboxes = this.urlList.querySelectorAll('.url-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+    }
+
+    deselectAllUrls() {
+        const checkboxes = this.urlList.querySelectorAll('.url-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+
+    getSelectedUrls() {
+        const checkboxes = this.urlList.querySelectorAll('.url-checkbox:checked');
+        return Array.from(checkboxes).map(checkbox => checkbox.dataset.url);
+    }
+
+    // テスト用関数
+    async testGetRequest() {
+        try {
+            const response = await fetch('test_get.php?action=test');
+            const result = await response.json();
+            console.log('GET Test Result:', result);
+            alert('GET Test: ' + JSON.stringify(result));
+        } catch (error) {
+            console.error('GET Test Error:', error);
+            alert('GET Test Error: ' + error.message);
+        }
+    }
+    
+    async testPostRequest() {
+        try {
+            const response = await fetch('test_post.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'test', message: 'hello' })
+            });
+            const result = await response.json();
+            console.log('POST Test Result:', result);
+            alert('POST Test: ' + JSON.stringify(result));
+        } catch (error) {
+            console.error('POST Test Error:', error);
+            alert('POST Test Error: ' + error.message);
+        }
+    }
+    
+    async testAnalyzeSitesAction() {
+        try {
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'analyze_sites' })
+            });
+            const result = await response.json();
+            console.log('Analyze Sites Action Test Result:', result);
+            alert('Analyze Sites Action Test: ' + JSON.stringify(result));
+        } catch (error) {
+            console.error('Analyze Sites Action Test Error:', error);
+            alert('Analyze Sites Action Test Error: ' + error.message);
+        }
+    }
+    
+    async testWithUrls() {
+        try {
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'analyze_sites',
+                    urls: ['https://example.com'],
+                    ai_model: 'gemini-2.0-flash'
+                })
+            });
+            const result = await response.json();
+            console.log('With URLs Test Result:', result);
+            alert('With URLs Test: ' + JSON.stringify(result));
+        } catch (error) {
+            console.error('With URLs Test Error:', error);
+            alert('With URLs Test Error: ' + error.message);
+        }
+    }
+    
+    async testWithRealUrl() {
+        try {
+            let testUrls = this.getSelectedUrls();
+            
+            // 選択されたURLがない場合は、プロンプトで入力
+            if (testUrls.length === 0) {
+                const inputUrl = prompt('テスト用のURLを入力してください:');
+                if (!inputUrl || !inputUrl.trim()) {
+                    alert('URLが入力されませんでした');
+                    return;
+                }
+                testUrls = [inputUrl.trim()];
+            }
+            
+            console.log('Testing with URLs:', testUrls);
+            console.log('Data size:', JSON.stringify({ 
+                action: 'analyze_sites',
+                urls: testUrls,
+                ai_model: this.aiModelSelect.value
+            }).length);
+            
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'analyze_sites',
+                    urls: testUrls,
+                    ai_model: this.aiModelSelect.value
+                })
+            });
+            const result = await response.json();
+            console.log('Real URL Test Result:', result);
+            alert('Real URL Test: ' + JSON.stringify(result));
+        } catch (error) {
+            console.error('Real URL Test Error:', error);
+            alert('Real URL Test Error: ' + error.message);
+        }
+    }
+    
+    async testWithCommonUrl() {
+        try {
+            const testUrls = ['https://yahoo.co.jp'];
+            
+            console.log('Testing with common URL:', testUrls);
+            console.log('Data size:', JSON.stringify({ 
+                action: 'analyze_sites',
+                urls: testUrls,
+                ai_model: this.aiModelSelect.value
+            }).length);
+            
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'analyze_sites',
+                    urls: testUrls,
+                    ai_model: this.aiModelSelect.value
+                })
+            });
+            const result = await response.json();
+            console.log('Common URL Test Result:', result);
+            alert('Common URL Test: ' + JSON.stringify(result));
+        } catch (error) {
+            console.error('Common URL Test Error:', error);
+            alert('Common URL Test Error: ' + error.message);
+        }
+    }
+
+    async analyzeSites() {
+        const urls = this.getSelectedUrls();
+        if (urls.length === 0) {
+            alert('少なくとも1つのURLを選択してください。');
+            return;
+        }
+
+        this.showLoading();
+        
+        try {
+            // URL数が多い場合は分割して処理
+            const groupSize = 10; // 10個ずつのグループに分割
+            const urlGroups = [];
+            for (let i = 0; i < urls.length; i += groupSize) {
+                urlGroups.push(urls.slice(i, i + groupSize));
+            }
+            
+            console.log(`総URL数: ${urls.length}, グループ数: ${urlGroups.length}`);
+            
+            // 各グループを順次分析
+            const groupAnalyses = [];
+            for (let i = 0; i < urlGroups.length; i++) {
+                const group = urlGroups[i];
+                console.log(`グループ ${i + 1}/${urlGroups.length} (${group.length}個のURL) を分析中...`);
+                
+                const requestData = {
+                    action: 'analyze_sites_group',
+                    urls: group,
+                    ai_model: this.aiModelSelect.value,
+                    group_index: i + 1,
+                    total_groups: urlGroups.length
+                };
+                
+                const response = await fetch('handler.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const result = await this.handleApiResponse(response);
+                if (result.success) {
+                    groupAnalyses.push(result.analysis);
+                } else {
+                    throw new Error(`グループ ${i + 1} の分析に失敗: ${result.error}`);
+                }
+                
+                // APIレート制限対策で少し待機
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            // 複数の分析結果を統合
+            console.log('分析結果を統合中...');
+            const finalRequestData = {
+                action: 'integrate_analyses',
+                analyses: groupAnalyses,
+                ai_model: this.aiModelSelect.value,
+                total_urls: urls.length
+            };
+            
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finalRequestData)
+            });
+            
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
                 this.currentSiteId = result.site_id;
+                this.savedUrls = urls;
+                
+                // 参照URLをデータベースに保存
+                await this.saveReferenceUrls(result.site_id, urls);
+                
                 this.analysisResult.innerHTML = this.formatAnalysisResult(result.analysis);
                 this.analysisSection.style.display = 'block';
                 this.loadSites(); // サイト選択を更新
@@ -464,7 +744,7 @@ class SatelliteColumnSystem {
 
         this.showLoading();
         try {
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -564,7 +844,7 @@ class SatelliteColumnSystem {
 
     async updatePublishDate(articleId, publishDate) {
         try {
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -613,7 +893,7 @@ class SatelliteColumnSystem {
         this.showLoading();
         
         try {
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -684,7 +964,7 @@ class SatelliteColumnSystem {
                 this.updateBulkGenerationProgress(i + 1, draftArticles.length, article.title);
                 
                 try {
-                    const response = await fetch('api.php', {
+                    const response = await fetch('handler.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -828,7 +1108,7 @@ class SatelliteColumnSystem {
         }
 
         try {
-            const response = await fetch('api.php', {
+            const response = await fetch('handler.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -855,9 +1135,227 @@ class SatelliteColumnSystem {
             alert('CSV出力中にエラーが発生しました。');
         }
     }
+
+    async saveReferenceUrls(siteId, urls) {
+        try {
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'save_reference_urls',
+                    site_id: siteId,
+                    urls: urls
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (!result.success) {
+                console.error('参照URL保存エラー:', result.error);
+            }
+        } catch (error) {
+            console.error('参照URL保存エラー:', error);
+        }
+    }
+
+    async loadReferenceUrls(siteId) {
+        if (!siteId) return;
+        
+        try {
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_reference_urls',
+                    site_id: siteId
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success && result.urls.length > 0) {
+                this.discoveredUrls = result.urls;
+                this.displayUrlList();
+                this.urlListSection.style.display = 'block';
+                this.analyzeSitesBtn.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('参照URL読み込みエラー:', error);
+        }
+    }
+
+    async showAiLogs() {
+        if (!this.currentSiteId) {
+            alert('まずサイトを選択してください。');
+            return;
+        }
+
+        this.showLoading();
+        try {
+            const response = await fetch('handler.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_ai_usage_logs',
+                    site_id: this.currentSiteId,
+                    limit: 50,
+                    offset: 0
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.displayAiLogs(result);
+                this.aiLogsSection.style.display = 'block';
+            } else {
+                alert('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('AIログ取得エラー:', error);
+            alert('AIログ取得中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    hideAiLogs() {
+        this.aiLogsSection.style.display = 'none';
+    }
+
+    displayAiLogs(data) {
+        const { logs, stats } = data;
+        
+        // 統計情報を表示
+        const statsHtml = `
+            <div class="ai-stats">
+                <h3>AI使用統計</h3>
+                <div class="stats-grid">
+                    ${stats.map(stat => `
+                        <div class="stat-item">
+                            <div class="stat-label">${stat.ai_model} - ${this.getUsageTypeLabel(stat.usage_type)}</div>
+                            <div class="stat-value">
+                                <span class="usage-count">${stat.usage_count}回</span>
+                                <span class="token-count">${stat.total_tokens}トークン</span>
+                                <span class="avg-time">${parseFloat(stat.avg_processing_time).toFixed(2)}秒</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        // ログリストを表示
+        const logsHtml = `
+            <div class="ai-logs">
+                <h3>AI使用ログ</h3>
+                <div class="logs-table">
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>日時</th>
+                                <th>AIモデル</th>
+                                <th>使用タイプ</th>
+                                <th>記事</th>
+                                <th>トークン数</th>
+                                <th>処理時間</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${logs.map(log => `
+                                <tr>
+                                    <td>${new Date(log.created_at).toLocaleString()}</td>
+                                    <td>${log.ai_model}</td>
+                                    <td>${this.getUsageTypeLabel(log.usage_type)}</td>
+                                    <td>${log.article_title || '-'}</td>
+                                    <td>${log.tokens_used}トークン</td>
+                                    <td>${parseFloat(log.processing_time).toFixed(2)}秒</td>
+                                    <td>
+                                        <button class="view-log-detail" data-log-id="${log.id}">詳細</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        this.aiLogsContent.innerHTML = statsHtml + logsHtml;
+        
+        // 詳細ボタンのイベント
+        this.aiLogsContent.addEventListener('click', (e) => {
+            if (e.target.classList.contains('view-log-detail')) {
+                const logId = e.target.dataset.logId;
+                const log = logs.find(l => l.id == logId);
+                if (log) {
+                    this.showLogDetail(log);
+                }
+            }
+        });
+    }
+
+    getUsageTypeLabel(type) {
+        const labels = {
+            'site_analysis': 'サイト分析',
+            'article_outline': '記事概要生成',
+            'article_generation': '記事生成',
+            'additional_outline': '追加概要生成'
+        };
+        return labels[type] || type;
+    }
+
+    showLogDetail(log) {
+        const modalContent = `
+            <div class="log-detail-modal">
+                <h3>AI使用ログ詳細</h3>
+                <div class="log-detail-info">
+                    <p><strong>日時:</strong> ${new Date(log.created_at).toLocaleString()}</p>
+                    <p><strong>AIモデル:</strong> ${log.ai_model}</p>
+                    <p><strong>使用タイプ:</strong> ${this.getUsageTypeLabel(log.usage_type)}</p>
+                    <p><strong>サイト:</strong> ${log.site_name}</p>
+                    <p><strong>記事:</strong> ${log.article_title || '-'}</p>
+                    <p><strong>トークン数:</strong> ${log.tokens_used}</p>
+                    <p><strong>処理時間:</strong> ${parseFloat(log.processing_time).toFixed(2)}秒</p>
+                </div>
+                <div class="log-detail-content">
+                    <h4>プロンプト</h4>
+                    <pre class="log-text">${log.prompt_text}</pre>
+                    <h4>レスポンス</h4>
+                    <pre class="log-text">${log.response_text}</pre>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('article-detail-content').innerHTML = modalContent;
+        this.articleDetailModal.style.display = 'block';
+    }
 }
 
 // アプリケーション初期化
 document.addEventListener('DOMContentLoaded', () => {
     window.satelliteSystem = new SatelliteColumnSystem();
+    
+    // デバッグ用テストボタンのイベントリスナー
+    document.getElementById('test-get-btn').addEventListener('click', () => {
+        window.satelliteSystem.testGetRequest();
+    });
+    
+    document.getElementById('test-post-btn').addEventListener('click', () => {
+        window.satelliteSystem.testPostRequest();
+    });
+    
+    document.getElementById('test-analyze-action-btn').addEventListener('click', () => {
+        window.satelliteSystem.testAnalyzeSitesAction();
+    });
+    
+    document.getElementById('test-with-urls-btn').addEventListener('click', () => {
+        window.satelliteSystem.testWithUrls();
+    });
+    
+    document.getElementById('test-with-real-url-btn').addEventListener('click', () => {
+        window.satelliteSystem.testWithRealUrl();
+    });
+    
+    document.getElementById('test-with-common-url-btn').addEventListener('click', () => {
+        window.satelliteSystem.testWithCommonUrl();
+    });
 });

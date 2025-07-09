@@ -1,5 +1,5 @@
 export class ApiClient {
-    constructor(baseUrl = 'api.php') {
+    constructor(baseUrl = 'handler.php') {
         this.baseUrl = baseUrl;
     }
     

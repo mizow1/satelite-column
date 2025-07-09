@@ -22,24 +22,50 @@
         <div class="ai-model-selector">
             <label for="ai-model">AIモデル:</label>
             <select id="ai-model">
+                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="claude-4-sonnet">Claude 4 Sonnet</option>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
             </select>
+        </div>
+        
+        <div class="debug-buttons" style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+            <h3>デバッグ用テスト</h3>
+            <button id="test-get-btn" class="btn">GET リクエスト テスト</button>
+            <button id="test-post-btn" class="btn">POST リクエスト テスト</button>
+            <button id="test-analyze-action-btn" class="btn">Analyze Sites アクション テスト</button>
+            <button id="test-with-urls-btn" class="btn">URL付きテスト</button>
+            <button id="test-with-real-url-btn" class="btn">実際のURL テスト</button>
+            <button id="test-with-common-url-btn" class="btn">Yahoo.co.jp テスト</button>
         </div>
 
         <div class="input-section">
             <h2>参照URL入力</h2>
             
-            <div id="url-inputs">
+            <div class="url-analysis-section">
                 <div class="url-input-group">
-                    <input type="url" placeholder="参照URLを入力" class="url-input">
-                    <button type="button" class="remove-url">削除</button>
+                    <input type="url" id="base-url-input" placeholder="サイトのベースURLを入力" class="url-input">
+                    <button type="button" id="crawl-urls">サイト分析</button>
+                </div>
+                
+                <div id="crawl-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="crawl-progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="crawl-progress-text">URLを取得中...</div>
                 </div>
             </div>
             
-            <button type="button" id="add-url">追加</button>
-            <button type="button" id="analyze-sites">実行</button>
+            <div class="url-list-section" id="url-list-section" style="display: none;">
+                <h3>発見されたURL一覧</h3>
+                <div class="url-list-controls">
+                    <button type="button" id="add-manual-url">手動URL追加</button>
+                    <button type="button" id="select-all-urls">全選択</button>
+                    <button type="button" id="deselect-all-urls">全解除</button>
+                </div>
+                <div id="url-list"></div>
+            </div>
+            
+            <button type="button" id="analyze-sites" style="display: none;">選択したURLで分析実行</button>
         </div>
 
         <div class="analysis-section" id="analysis-section" style="display: none;">
@@ -53,6 +79,7 @@
             <div class="outline-controls">
                 <button type="button" id="generate-all-articles">全記事一括作成</button>
                 <button type="button" id="export-csv">CSV出力</button>
+                <button type="button" id="show-ai-logs">AI使用ログ</button>
             </div>
             <div class="auto-generation-section">
                 <h3>全自動モード</h3>
@@ -79,6 +106,15 @@
                 <h2>記事詳細</h2>
                 <div id="article-detail-content"></div>
             </div>
+        </div>
+
+        <div class="ai-logs-section" id="ai-logs-section" style="display: none;">
+            <h2>AI使用ログ</h2>
+            <div class="log-controls">
+                <button type="button" id="show-ai-logs">AI使用ログを表示</button>
+                <button type="button" id="hide-ai-logs">ログを非表示</button>
+            </div>
+            <div id="ai-logs-content"></div>
         </div>
 
         <div class="loading-overlay" id="loading-overlay" style="display: none;">

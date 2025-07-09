@@ -427,6 +427,403 @@ header p {
     line-height: 1.4;
 }
 
+/* URL解析機能のスタイル */
+.url-analysis-section {
+    margin-bottom: 30px;
+}
+
+.url-analysis-section .url-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+#base-url-input {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+#base-url-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+#crawl-urls {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    white-space: nowrap;
+}
+
+#crawl-urls:hover {
+    background: #5a6fd8;
+}
+
+#crawl-urls:disabled {
+    background: #95a5a6;
+    cursor: not-allowed;
+}
+
+#crawl-progress {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    margin-bottom: 20px;
+}
+
+.progress-text {
+    font-size: 16px;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-top: 10px;
+    text-align: center;
+}
+
+.url-list-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    border: 2px solid #667eea;
+}
+
+.url-list-section h3 {
+    color: #667eea;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
+
+.url-list-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.url-list-controls button {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.url-list-controls button:hover {
+    background: #5a6fd8;
+}
+
+#url-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background: white;
+}
+
+.url-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    gap: 10px;
+}
+
+.url-item:last-child {
+    border-bottom: none;
+}
+
+.url-item:hover {
+    background: #f8f9fa;
+}
+
+.url-checkbox {
+    margin-right: 10px;
+}
+
+.url-text {
+    flex: 1;
+    word-break: break-all;
+    font-size: 14px;
+    color: #2c3e50;
+}
+
+.remove-url-btn {
+    background: #ff4757;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    min-width: 20px;
+}
+
+.remove-url-btn:hover {
+    background: #ff3838;
+}
+
+#analyze-sites {
+    background: #2ed573;
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    margin-top: 20px;
+}
+
+#analyze-sites:hover {
+    background: #2bcf69;
+}
+
+/* レスポンシブデザインの調整 */
+@media (max-width: 768px) {
+    .url-analysis-section .url-input-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    #base-url-input {
+        width: 100%;
+    }
+    
+    #crawl-urls {
+        width: 100%;
+    }
+    
+    .url-list-controls {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .url-list-controls button {
+        width: 100%;
+    }
+    
+    .url-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+    
+    .url-checkbox {
+        margin-right: 0;
+    }
+    
+    .remove-url-btn {
+        align-self: flex-end;
+    }
+}
+
+/* AI使用ログのスタイル */
+.ai-logs-section {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+}
+
+.ai-logs-section h2 {
+    margin-bottom: 20px;
+    color: #667eea;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 10px;
+}
+
+.log-controls {
+    margin-bottom: 20px;
+}
+
+.log-controls button {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-right: 10px;
+}
+
+.log-controls button:hover {
+    background: #5a6fd8;
+}
+
+.ai-stats {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.ai-stats h3 {
+    color: #667eea;
+    margin-bottom: 15px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+}
+
+.stat-item {
+    background: white;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #667eea;
+}
+
+.stat-label {
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #7f8c8d;
+}
+
+.usage-count {
+    color: #2ed573;
+    font-weight: bold;
+}
+
+.token-count {
+    color: #ffa502;
+    font-weight: bold;
+}
+
+.avg-time {
+    color: #3742fa;
+    font-weight: bold;
+}
+
+.ai-logs {
+    margin-top: 20px;
+}
+
+.ai-logs h3 {
+    color: #667eea;
+    margin-bottom: 15px;
+}
+
+.logs-table {
+    overflow-x: auto;
+}
+
+.log-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.log-table th,
+.log-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.log-table th {
+    background: #f8f9fa;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.log-table tr:hover {
+    background: #f8f9fa;
+}
+
+.view-log-detail {
+    background: #3742fa;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.view-log-detail:hover {
+    background: #2f3542;
+}
+
+.log-detail-modal {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.log-detail-info {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.log-detail-info p {
+    margin: 5px 0;
+}
+
+.log-detail-content h4 {
+    color: #667eea;
+    margin: 20px 0 10px 0;
+}
+
+.log-text {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* レスポンシブデザインの調整 */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stat-value {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .log-table {
+        font-size: 12px;
+    }
+    
+    .log-table th,
+    .log-table td {
+        padding: 8px;
+    }
+    
+    .log-text {
+        font-size: 11px;
+    }
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 10px;

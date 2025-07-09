@@ -1,4 +1,10 @@
 <?php
+// 直接アクセス防止
+if (!defined('INCLUDED_FROM_API')) {
+    header('HTTP/1.0 403 Forbidden');
+    exit('Direct access is not allowed.');
+}
+
 class AIService {
     private $timeout = 300; // 5分
     

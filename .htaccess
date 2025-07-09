@@ -1,12 +1,11 @@
 # さくらレンタルサーバー用設定
-RewriteEngine On
 
-# PHP設定
-php_value max_execution_time 300
-php_value max_input_time 300
-php_value memory_limit 256M
-php_value post_max_size 32M
-php_value upload_max_filesize 32M
+# PHP設定（さくらレンタルサーバーでは.htaccessでの設定が制限されている場合があります）
+# php_value max_execution_time 300
+# php_value max_input_time 300
+# php_value memory_limit 256M
+# php_value post_max_size 32M
+# php_value upload_max_filesize 32M
 
 # セキュリティ設定
 # .envファイルへのアクセス拒否
@@ -15,11 +14,11 @@ php_value upload_max_filesize 32M
     Deny from all
 </Files>
 
-# 設定ファイルへのアクセス拒否
-<Files "config.php">
-    Order allow,deny
-    Deny from all
-</Files>
+# 設定ファイルへの直接アクセス拒否
+# <Files "config.php">
+#     Order allow,deny
+#     Deny from all
+# </Files>
 
 # セットアップファイルへのアクセス拒否（セットアップ後）
 <Files "setup.php">
