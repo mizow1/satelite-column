@@ -293,10 +293,23 @@ class SatelliteColumnSystem {
 
     showLoading() {
         this.loadingOverlay.style.display = 'flex';
+        // 初期状態のローディングテキストを設定
+        const loadingText = this.loadingOverlay.querySelector('.loading-text');
+        if (loadingText) {
+            loadingText.textContent = '処理中...';
+        }
     }
 
     hideLoading() {
         this.loadingOverlay.style.display = 'none';
+    }
+    
+    updateLoadingProgress(message) {
+        const loadingText = this.loadingOverlay.querySelector('.loading-text');
+        if (loadingText) {
+            loadingText.textContent = message;
+        }
+        // console.log('Progress: ' + message);
     }
 
     async loadSites() {
@@ -664,6 +677,12 @@ class SatelliteColumnSystem {
             const groupAnalyses = [];
             for (let i = 0; i < urlGroups.length; i++) {
                 const group = urlGroups[i];
+                
+                // 進捗を更新
+                const processedUrls = i * groupSize;
+                const currentProgress = `(${processedUrls}/${urls.length}) を分析中... グループ ${i + 1}/${urlGroups.length}`;
+                this.updateLoadingProgress(currentProgress);
+                
                 console.log(`グループ ${i + 1}/${urlGroups.length} (${group.length}個のURL) を分析中...`);
                 
                 const requestData = {
@@ -683,6 +702,12 @@ class SatelliteColumnSystem {
                 const result = await this.handleApiResponse(response);
                 if (result.success) {
                     groupAnalyses.push(result.analysis);
+                    
+                    // グループ完了後の進捗を更新
+                    const completedUrls = (i + 1) * groupSize;
+                    const actualCompleted = Math.min(completedUrls, urls.length);
+                    const completedProgress = `(${actualCompleted}/${urls.length}) 分析完了 - グループ ${i + 1}/${urlGroups.length}`;
+                    this.updateLoadingProgress(completedProgress);
                 } else {
                     throw new Error(`グループ ${i + 1} の分析に失敗: ${result.error}`);
                 }
@@ -693,6 +718,8 @@ class SatelliteColumnSystem {
             
             // 複数の分析結果を統合
             console.log('分析結果を統合中...');
+            this.updateLoadingProgress(`(${urls.length}/${urls.length}) 分析完了 - 結果を統合中...`);
+            
             const finalRequestData = {
                 action: 'integrate_analyses',
                 analyses: groupAnalyses,

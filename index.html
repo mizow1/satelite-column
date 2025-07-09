@@ -28,7 +28,7 @@
             </select>
         </div>
         
-        <div class="debug-buttons" style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+        <div style="display: none;" class="debug-buttons" style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
             <h3>デバッグ用テスト</h3>
             <button id="test-get-btn" class="btn">GET リクエスト テスト</button>
             <button id="test-post-btn" class="btn">POST リクエスト テスト</button>
@@ -44,7 +44,7 @@
             <div class="url-analysis-section">
                 <div class="url-input-group">
                     <input type="url" id="base-url-input" placeholder="サイトのベースURLを入力" class="url-input">
-                    <button type="button" id="crawl-urls">サイト分析</button>
+                    <button type="button" id="crawl-urls">関連URL取得</button>
                 </div>
                 
                 <div id="crawl-progress" style="display: none;">
@@ -76,13 +76,8 @@
 
         <div class="article-outline-section" id="article-outline-section" style="display: none;">
             <h2>記事概要一覧</h2>
-            <div class="outline-controls">
-                <button type="button" id="generate-all-articles">全記事一括作成</button>
-                <button type="button" id="export-csv">CSV出力</button>
-                <button type="button" id="show-ai-logs">AI使用ログ</button>
-            </div>
             <div class="auto-generation-section">
-                <h3>全自動モード</h3>
+                <h3>全自動モード（指定した数で概要と記事を一括生成）</h3>
                 <div class="auto-controls">
                     <label for="auto-article-count">作成件数:</label>
                     <input type="number" id="auto-article-count" value="50" min="1" max="1000">
@@ -97,6 +92,13 @@
                     <div class="progress-details" id="progress-details"></div>
                 </div>
             </div>
+
+            <div class="outline-controls">
+                <button type="button" id="generate-all-articles">全記事一括作成</button>
+                <button type="button" id="export-csv">CSV出力</button>
+                <button type="button" id="show-ai-logs">AI使用ログ</button>
+            </div>
+
             <div id="article-outline-table"></div>
         </div>
 
@@ -119,7 +121,7 @@
 
         <div class="loading-overlay" id="loading-overlay" style="display: none;">
             <div class="loading-spinner"></div>
-            <p>処理中...</p>
+            <p class="loading-text">処理中...</p>
         </div>
     </div>
 
