@@ -724,7 +724,8 @@ class SatelliteColumnSystem {
                 action: 'integrate_analyses',
                 analyses: groupAnalyses,
                 ai_model: this.aiModelSelect.value,
-                total_urls: urls.length
+                total_urls: urls.length,
+                base_url: urls[0] // 最初のURLをベースURLとして渡す
             };
             
             const response = await fetch('handler.php', {

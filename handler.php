@@ -136,7 +136,7 @@ try {
             if (!isset($input['analyses']) || !isset($input['ai_model'])) {
                 sendJsonResponse(['success' => false, 'error' => 'analyses and ai_model are required']);
             }
-            sendJsonResponse(integrateAnalyses($input['analyses'], $input['ai_model'], $input['total_urls'] ?? 0));
+            sendJsonResponse(integrateAnalyses($input['analyses'], $input['ai_model'], $input['total_urls'] ?? 0, $input['base_url'] ?? ''));
             break;
         case 'create_article_outline':
             if (!isset($input['site_id']) || !isset($input['ai_model'])) {
@@ -378,7 +378,7 @@ function analyzeSitesGroup($urls, $aiModel, $groupIndex = 1, $totalGroups = 1) {
     }
 }
 
-function integrateAnalyses($analyses, $aiModel, $totalUrls = 0) {
+function integrateAnalyses($analyses, $aiModel, $totalUrls = 0, $baseUrl = '') {
     try {
         $pdo = DatabaseConfig::getConnection();
         
@@ -391,7 +391,12 @@ function integrateAnalyses($analyses, $aiModel, $totalUrls = 0) {
         $processingTime = microtime(true) - $startTime;
         
         // 統合結果をDBに保存
-        $siteName = "統合分析結果 (" . count($analyses) . "グループ)";
+        // サイト名を「一番上のURL（URL数）」形式に変更
+        if (!empty($baseUrl)) {
+            $siteName = extractSiteName($baseUrl) . " ({$totalUrls}個のURL)";
+        } else {
+            $siteName = "統合分析結果 ({$totalUrls}個のURL)";
+        }
         
         // ai_modelカラムの存在チェック
         $checkSql = "SHOW COLUMNS FROM sites LIKE 'ai_model'";
@@ -964,6 +969,10 @@ function crawlSiteUrls($baseUrl) {
         $scheme = $parsedUrl['scheme'] ?? 'https';
         $baseDomain = $scheme . '://' . $domain;
         
+        // ベースURL以下の下層に限定するためのパス設定
+        $basePath = rtrim($parsedUrl['path'] ?? '/', '/');
+        $baseUrlPrefix = $scheme . '://' . $domain . $basePath;
+        
         $foundUrls = [];
         $visitedUrls = [];
         $urlsToVisit = [$baseUrl];
@@ -993,8 +1002,8 @@ function crawlSiteUrls($baseUrl) {
                 if (!in_array($link, $foundUrls) && !in_array($link, $visitedUrls)) {
                     $foundUrls[] = $link;
                     
-                    // 同じドメインのURLのみを巡回対象に追加
-                    if (strpos($link, $baseDomain) === 0 && count($urlsToVisit) < 50) {
+                    // ベースURL以下の下層のみを巡回対象に追加
+                    if (strpos($link, $baseUrlPrefix) === 0 && count($urlsToVisit) < 50) {
                         $urlsToVisit[] = $link;
                     }
                 }
@@ -1012,6 +1021,11 @@ function crawlSiteUrls($baseUrl) {
 }
 
 function extractLinksFromHtml($html, $baseUrl, $domain) {
+    // ベースURL以下の下層に限定するためのプレフィックス設定
+    $parsedBaseUrl = parse_url($baseUrl);
+    $basePath = rtrim($parsedBaseUrl['path'] ?? '/', '/');
+    $scheme = $parsedBaseUrl['scheme'] ?? 'https';
+    $baseUrlPrefix = $scheme . '://' . $domain . $basePath;
     $links = [];
     
     if (empty($html)) {
@@ -1036,8 +1050,8 @@ function extractLinksFromHtml($html, $baseUrl, $domain) {
         // 相対URLを絶対URLに変換
         $absoluteUrl = resolveUrl($href, $baseUrl);
         
-        // 同じドメインのURLのみを対象とする
-        if (strpos($absoluteUrl, 'http') === 0 && strpos($absoluteUrl, $domain) !== false) {
+        // ベースURL以下の下層のみを対象とする
+        if (strpos($absoluteUrl, 'http') === 0 && strpos($absoluteUrl, $baseUrlPrefix) === 0) {
             // フラグメント（#）を除去
             $absoluteUrl = strtok($absoluteUrl, '#');
             
