@@ -600,7 +600,18 @@ class SatelliteColumnSystem {
     }
 
     async generateArticle(articleId) {
+        // 既に実行中の記事IDを管理
+        if (this.generatingArticles && this.generatingArticles.has(articleId)) {
+            return;
+        }
+        
+        if (!this.generatingArticles) {
+            this.generatingArticles = new Set();
+        }
+        
+        this.generatingArticles.add(articleId);
         this.showLoading();
+        
         try {
             const response = await fetch('api.php', {
                 method: 'POST',
@@ -628,6 +639,7 @@ class SatelliteColumnSystem {
             console.error('記事生成エラー:', error);
             alert('記事生成中にエラーが発生しました。');
         } finally {
+            this.generatingArticles.delete(articleId);
             this.hideLoading();
         }
     }
@@ -648,31 +660,76 @@ class SatelliteColumnSystem {
             return;
         }
 
-        this.showLoading();
+        // 一括生成実行中フラグを設定
+        if (this.isGeneratingAll) {
+            alert('既に一括生成中です。しばらくお待ちください。');
+            return;
+        }
+        
+        this.isGeneratingAll = true;
+        this.bulkGenerationCancelled = false;
+        this.showBulkGenerationProgress(draftArticles.length);
+        
         try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'generate_all_articles',
-                    site_id: this.currentSiteId,
-                    ai_model: this.aiModelSelect.value
-                })
-            });
-            const result = await this.handleApiResponse(response);
+            let successCount = 0;
+            let errorCount = 0;
             
-            if (result.success) {
-                this.articles = result.articles;
-                this.displayArticleOutline();
-                alert('全記事を生成しました。');
-            } else {
-                alert('エラー: ' + result.error);
+            // 各記事を順番に生成（バックグラウンド処理）
+            for (let i = 0; i < draftArticles.length; i++) {
+                if (this.bulkGenerationCancelled) {
+                    break;
+                }
+                
+                const article = draftArticles[i];
+                this.updateBulkGenerationProgress(i + 1, draftArticles.length, article.title);
+                
+                try {
+                    const response = await fetch('api.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'generate_article',
+                            article_id: article.id,
+                            ai_model: this.aiModelSelect.value
+                        })
+                    });
+                    const result = await this.handleApiResponse(response);
+                    
+                    if (result.success) {
+                        successCount++;
+                        // 記事一覧を更新
+                        const articleIndex = this.articles.findIndex(a => a.id == article.id);
+                        if (articleIndex !== -1) {
+                            this.articles[articleIndex] = result.article;
+                        }
+                        // 完了した記事を即座に保存・表示
+                        this.displayArticleOutline();
+                    } else {
+                        errorCount++;
+                        console.error(`記事ID ${article.id} 生成エラー:`, result.error);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    console.error(`記事ID ${article.id} 生成エラー:`, error);
+                }
+                
+                // 短時間待機してUIの応答性を保つ
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
+            
+            const message = this.bulkGenerationCancelled ? 
+                `一括生成が中断されました。\n成功: ${successCount}記事\nエラー: ${errorCount}記事` :
+                `一括生成が完了しました。\n成功: ${successCount}記事\nエラー: ${errorCount}記事`;
+            
+            alert(message);
+            
         } catch (error) {
-            console.error('全記事生成エラー:', error);
-            alert('全記事生成中にエラーが発生しました。');
+            console.error('一括生成エラー:', error);
+            alert('一括生成中にエラーが発生しました。');
         } finally {
-            this.hideLoading();
+            this.isGeneratingAll = false;
+            this.bulkGenerationCancelled = false;
+            this.hideBulkGenerationProgress();
         }
     }
 
@@ -696,6 +753,66 @@ class SatelliteColumnSystem {
 
     closeModal() {
         this.articleDetailModal.style.display = 'none';
+    }
+
+    showBulkGenerationProgress(totalCount) {
+        const progressHtml = `
+            <div id="bulk-generation-progress" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                 background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1000; min-width: 400px;">
+                <h3>記事一括生成中...</h3>
+                <div style="margin: 15px 0;">
+                    <div style="background: #f0f0f0; height: 20px; border-radius: 10px; overflow: hidden;">
+                        <div id="bulk-progress-bar" style="background: #4CAF50; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="bulk-progress-text" style="margin-top: 10px; text-align: center;">0 / ${totalCount} 記事完了</div>
+                </div>
+                <div id="bulk-current-article" style="margin: 10px 0; font-size: 14px; color: #666;">準備中...</div>
+                <div style="text-align: center; margin-top: 15px;">
+                    <button id="cancel-bulk-generation" style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        中断する
+                    </button>
+                </div>
+            </div>
+            <div id="bulk-generation-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                 background: rgba(0,0,0,0.5); z-index: 999;"></div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', progressHtml);
+        
+        document.getElementById('cancel-bulk-generation').addEventListener('click', () => {
+            if (confirm('一括生成を中断しますか？\n（現在生成中の記事は保存されません）')) {
+                this.bulkGenerationCancelled = true;
+            }
+        });
+    }
+
+    updateBulkGenerationProgress(currentCount, totalCount, currentTitle) {
+        const progressBar = document.getElementById('bulk-progress-bar');
+        const progressText = document.getElementById('bulk-progress-text');
+        const currentArticle = document.getElementById('bulk-current-article');
+        
+        if (progressBar && progressText && currentArticle) {
+            const percentage = (currentCount / totalCount) * 100;
+            progressBar.style.width = percentage + '%';
+            progressText.textContent = `${currentCount} / ${totalCount} 記事完了`;
+            currentArticle.textContent = `現在生成中: ${currentTitle}`;
+        }
+    }
+
+    hideBulkGenerationProgress() {
+        const progressElement = document.getElementById('bulk-generation-progress');
+        const overlayElement = document.getElementById('bulk-generation-overlay');
+        
+        if (progressElement) {
+            progressElement.remove();
+        }
+        if (overlayElement) {
+            overlayElement.remove();
+        }
+    }
+
+    cancelBulkGeneration() {
+        this.bulkGenerationCancelled = true;
     }
 
     async exportCsv() {
