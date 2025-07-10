@@ -10,6 +10,76 @@ body {
     color: #333;
 }
 
+/* 多言語設定 */
+.multilingual-settings {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.multilingual-settings h3 {
+    margin-top: 0;
+    color: #2c3e50;
+    font-size: 1.2em;
+}
+
+.language-toggles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.language-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.language-toggle:hover {
+    background: #e9ecef;
+}
+
+.language-toggle input[type="checkbox"] {
+    margin: 0;
+    transform: scale(1.2);
+}
+
+.language-toggle label {
+    margin: 0;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* 記事言語セレクタ */
+.article-language-selector, .article-detail-language-selector {
+    background: #fff;
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+}
+
+.article-language-selector label, .article-detail-language-selector label {
+    font-weight: 600;
+    margin-right: 10px;
+    color: #2c3e50;
+}
+
+.article-language-selector select, .article-detail-language-selector select {
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    min-width: 180px;
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -870,4 +940,83 @@ header p {
         width: 100%;
         max-width: 200px;
     }
+}
+
+/* 多言語記事生成進捗表示 */
+#multilingual-progress-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+}
+
+#multilingual-progress-modal .modal-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+#multilingual-progress-modal .modal-content {
+    background: white;
+    border-radius: 10px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+#multilingual-progress-modal h3 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-size: 1.5em;
+}
+
+#multilingual-progress-message {
+    margin-bottom: 20px;
+    font-size: 1.1em;
+    color: #34495e;
+    font-weight: 500;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #ecf0f1;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+#multilingual-progress-fill {
+    height: 100%;
+    background: linear-gradient(45deg, #3498db, #2980b9);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+#multilingual-progress-details {
+    text-align: left;
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+#multilingual-progress-details p {
+    margin: 5px 0;
+    font-size: 14px;
+    color: #555;
+}
+
+#multilingual-progress-details strong {
+    color: #2c3e50;
 }

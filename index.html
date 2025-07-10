@@ -28,6 +28,7 @@
             </select>
         </div>
         
+        
         <div style="display: none;" class="debug-buttons" style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
             <h3>デバッグ用テスト</h3>
             <button id="test-get-btn" class="btn">GET リクエスト テスト</button>
@@ -39,7 +40,7 @@
         </div>
 
         <div class="input-section">
-            <h2>参照URL入力</h2>
+            <h2>参考URL入力</h2>
             
             <div class="url-analysis-section">
                 <div class="url-input-group">
@@ -56,7 +57,7 @@
             </div>
             
             <div class="url-list-section" id="url-list-section" style="display: none;">
-                <h3>発見されたURL一覧</h3>
+                <h3>関連URL</h3>
                 <div class="url-list-controls">
                     <button type="button" id="add-manual-url">手動URL追加</button>
                     <button type="button" id="select-all-urls">全選択</button>
@@ -65,17 +66,85 @@
                 <div id="url-list"></div>
             </div>
             
-            <button type="button" id="analyze-sites" style="display: none;">選択したURLで分析実行</button>
+            <button type="button" id="analyze-sites" style="display: none;">記事作成方針作成</button>
         </div>
 
         <div class="analysis-section" id="analysis-section" style="display: none;">
-            <h2>サイト分析結果</h2>
+            <h2>記事作成方針</h2>
             <div id="analysis-result"></div>
             <button type="button" id="create-article-outline">記事概要作成</button>
         </div>
 
+
+        <div class="multilingual-settings" id="multilingual-settings">
+            <h3>多言語生成設定</h3>
+            <div class="language-toggles">
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-en" data-language="en">
+                    <label for="lang-en">English</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-zh-cn" data-language="zh-CN">
+                    <label for="lang-zh-cn">中文（简体）</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-zh-tw" data-language="zh-TW">
+                    <label for="lang-zh-tw">中文（繁體）</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-ko" data-language="ko">
+                    <label for="lang-ko">한국어</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-es" data-language="es">
+                    <label for="lang-es">Español</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-ar" data-language="ar">
+                    <label for="lang-ar">العربية</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-pt" data-language="pt">
+                    <label for="lang-pt">Português</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-fr" data-language="fr">
+                    <label for="lang-fr">Français</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-de" data-language="de">
+                    <label for="lang-de">Deutsch</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-ru" data-language="ru">
+                    <label for="lang-ru">Русский</label>
+                </div>
+                <div class="language-toggle">
+                    <input type="checkbox" id="lang-it" data-language="it">
+                    <label for="lang-it">Italiano</label>
+                </div>
+            </div>
+        </div>
+
         <div class="article-outline-section" id="article-outline-section" style="display: none;">
             <h2>記事概要一覧</h2>
+            <div class="article-language-selector">
+                <label for="article-language-select">表示言語:</label>
+                <select id="article-language-select">
+                    <option value="ja">日本語（オリジナル）</option>
+                    <option value="en">English</option>
+                    <option value="zh-CN">中文（简体）</option>
+                    <option value="zh-TW">中文（繁體）</option>
+                    <option value="ko">한국어</option>
+                    <option value="es">Español</option>
+                    <option value="ar">العربية</option>
+                    <option value="pt">Português</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="ru">Русский</option>
+                    <option value="it">Italiano</option>
+                </select>
+            </div>
             <div class="auto-generation-section">
                 <h3>全自動モード（指定した数で概要と記事を一括生成）</h3>
                 <div class="auto-controls">
@@ -95,6 +164,7 @@
 
             <div class="outline-controls">
                 <button type="button" id="generate-all-articles">全記事一括作成</button>
+                <button type="button" id="generate-multilingual-articles">多言語記事生成</button>
                 <button type="button" id="export-csv">CSV出力</button>
                 <button type="button" id="show-ai-logs">AI使用ログ</button>
             </div>
@@ -106,6 +176,23 @@
             <div class="modal-content">
                 <span class="close">&times;</span>
                 <h2>記事詳細</h2>
+                <div class="article-detail-language-selector">
+                    <label for="article-detail-language-select">表示言語:</label>
+                    <select id="article-detail-language-select">
+                        <option value="ja">日本語（オリジナル）</option>
+                        <option value="en">English</option>
+                        <option value="zh-CN">中文（简体）</option>
+                        <option value="zh-TW">中文（繁體）</option>
+                        <option value="ko">한국어</option>
+                        <option value="es">Español</option>
+                        <option value="ar">العربية</option>
+                        <option value="pt">Português</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                        <option value="ru">Русский</option>
+                        <option value="it">Italiano</option>
+                    </select>
+                </div>
                 <div id="article-detail-content"></div>
             </div>
         </div>

@@ -221,6 +221,9 @@ class SatelliteColumnSystem {
         this.bindEvents();
         this.loadSites();
         this.autoGenerationManager = new AutoGenerationManager();
+        this.updatingMultilingualSetting = false;
+        // 初期状態で多言語設定の基本表示を設定
+        this.initializeMultilingualSettings();
     }
 
     initializeElements() {
@@ -255,10 +258,17 @@ class SatelliteColumnSystem {
         this.aiLogsSection = document.getElementById('ai-logs-section');
         this.aiLogsContent = document.getElementById('ai-logs-content');
         
+        // 多言語関連の要素
+        this.multilingualSettings = document.getElementById('multilingual-settings');
+        this.articleLanguageSelect = document.getElementById('article-language-select');
+        this.articleDetailLanguageSelect = document.getElementById('article-detail-language-select');
+        
         this.currentSiteId = null;
         this.articles = [];
         this.discoveredUrls = [];
         this.savedUrls = [];
+        this.currentLanguage = 'ja'; // デフォルトは日本語
+        this.multilingualConfig = {};
     }
 
     bindEvents() {
@@ -267,6 +277,10 @@ class SatelliteColumnSystem {
         if (this.createArticleOutlineBtn) this.createArticleOutlineBtn.addEventListener('click', () => this.createArticleOutline());
         if (this.generateAllArticlesBtn) this.generateAllArticlesBtn.addEventListener('click', () => this.generateAllArticles());
         if (this.exportCsvBtn) this.exportCsvBtn.addEventListener('click', () => this.exportCsv());
+        
+        // 多言語記事生成ボタンのイベント
+        const generateMultilingualArticlesBtn = document.getElementById('generate-multilingual-articles');
+        if (generateMultilingualArticlesBtn) generateMultilingualArticlesBtn.addEventListener('click', () => this.generateMultilingualArticles());
         if (this.siteSelect) this.siteSelect.addEventListener('change', (e) => this.loadSiteData(e.target.value));
         
         // 新しいURL解析関連のイベント
@@ -278,6 +292,10 @@ class SatelliteColumnSystem {
         // AI使用ログ関連のイベント
         if (this.showAiLogsBtn) this.showAiLogsBtn.addEventListener('click', () => this.showAiLogs());
         if (this.hideAiLogsBtn) this.hideAiLogsBtn.addEventListener('click', () => this.hideAiLogs());
+        
+        // 多言語関連のイベント
+        if (this.articleLanguageSelect) this.articleLanguageSelect.addEventListener('change', (e) => this.changeArticleLanguage(e.target.value));
+        if (this.articleDetailLanguageSelect) this.articleDetailLanguageSelect.addEventListener('change', (e) => this.changeArticleDetailLanguage(e.target.value));
         
         // モーダル関連
         const closeBtn = document.querySelector('.close');
@@ -314,7 +332,7 @@ class SatelliteColumnSystem {
 
     async loadSites() {
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'get_sites' })
@@ -382,7 +400,7 @@ class SatelliteColumnSystem {
             this.articles = [];
             this.articleOutlineSection.style.display = 'none';
             
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -397,6 +415,8 @@ class SatelliteColumnSystem {
                 this.displaySiteData(result.data);
                 // サイト切り替え時にステータス表示を更新
                 this.autoGenerationManager.onSiteChanged(siteId);
+                // 多言語設定を読み込み
+                this.loadMultilingualSettings(siteId);
             }
         } catch (error) {
             console.error('サイトデータ読み込みエラー:', error);
@@ -438,7 +458,7 @@ class SatelliteColumnSystem {
         this.crawlProgressFill.style.width = '0%';
 
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -552,7 +572,7 @@ class SatelliteColumnSystem {
     
     async testAnalyzeSitesAction() {
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'analyze_sites' })
@@ -568,7 +588,7 @@ class SatelliteColumnSystem {
     
     async testWithUrls() {
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -607,7 +627,7 @@ class SatelliteColumnSystem {
                 ai_model: this.aiModelSelect.value
             }).length);
             
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -636,7 +656,7 @@ class SatelliteColumnSystem {
                 ai_model: this.aiModelSelect.value
             }).length);
             
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -693,7 +713,7 @@ class SatelliteColumnSystem {
                     total_groups: urlGroups.length
                 };
                 
-                const response = await fetch('handler.php', {
+                const response = await fetch('api.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestData)
@@ -707,9 +727,15 @@ class SatelliteColumnSystem {
                     const completedUrls = (i + 1) * groupSize;
                     const actualCompleted = Math.min(completedUrls, urls.length);
                     const completedProgress = `(${actualCompleted}/${urls.length}) 分析完了 - グループ ${i + 1}/${urlGroups.length}`;
-                    this.updateLoadingProgress(completedProgress);
+                    if (result.processed_urls !== undefined) {
+                        this.updateLoadingProgress(completedProgress + ` (処理成功: ${result.processed_urls}, 失敗: ${result.failed_urls || 0})`);
+                    } else {
+                        this.updateLoadingProgress(completedProgress);
+                    }
                 } else {
-                    throw new Error(`グループ ${i + 1} の分析に失敗: ${result.error}`);
+                    console.warn(`グループ ${i + 1} の分析に問題がありました: ${result.error}`);
+                    // エラーでも空の分析結果を追加して処理を続行
+                    groupAnalyses.push(`グループ ${i + 1} の分析でエラーが発生しました: ${result.error}`);
                 }
                 
                 // APIレート制限対策で少し待機
@@ -728,7 +754,7 @@ class SatelliteColumnSystem {
                 base_url: urls[0] // 最初のURLをベースURLとして渡す
             };
             
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(finalRequestData)
@@ -746,6 +772,9 @@ class SatelliteColumnSystem {
                 this.analysisResult.innerHTML = this.formatAnalysisResult(result.analysis);
                 this.analysisSection.style.display = 'block';
                 this.loadSites(); // サイト選択を更新
+                
+                // 新規サイト作成時に多言語設定を読み込み
+                this.loadMultilingualSettings(result.site_id);
             } else {
                 alert('エラー: ' + result.error);
             }
@@ -759,7 +788,6 @@ class SatelliteColumnSystem {
 
     formatAnalysisResult(analysis) {
         return `
-            <h3>サイト特徴分析</h3>
             <div style="white-space: pre-wrap; margin: 15px 0;">${analysis}</div>
         `;
     }
@@ -772,7 +800,7 @@ class SatelliteColumnSystem {
 
         this.showLoading();
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -872,7 +900,7 @@ class SatelliteColumnSystem {
 
     async updatePublishDate(articleId, publishDate) {
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -921,7 +949,7 @@ class SatelliteColumnSystem {
         this.showLoading();
         
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -992,7 +1020,7 @@ class SatelliteColumnSystem {
                 this.updateBulkGenerationProgress(i + 1, draftArticles.length, article.title);
                 
                 try {
-                    const response = await fetch('handler.php', {
+                    const response = await fetch('api.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1048,6 +1076,7 @@ class SatelliteColumnSystem {
             return;
         }
 
+        this.currentDetailArticleId = articleId;
         document.getElementById('article-detail-content').innerHTML = `
             <h3>${article.title}</h3>
             <p><strong>SEOキーワード:</strong> ${article.seo_keywords}</p>
@@ -1136,7 +1165,7 @@ class SatelliteColumnSystem {
         }
 
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1166,7 +1195,7 @@ class SatelliteColumnSystem {
 
     async saveReferenceUrls(siteId, urls) {
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1189,7 +1218,7 @@ class SatelliteColumnSystem {
         if (!siteId) return;
         
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1218,7 +1247,7 @@ class SatelliteColumnSystem {
 
         this.showLoading();
         try {
-            const response = await fetch('handler.php', {
+            const response = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1355,6 +1384,446 @@ class SatelliteColumnSystem {
         
         document.getElementById('article-detail-content').innerHTML = modalContent;
         this.articleDetailModal.style.display = 'block';
+    }
+
+    async loadMultilingualSettings(siteId) {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_multilingual_settings',
+                    site_id: siteId
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.displayMultilingualSettings(result.settings);
+            }
+        } catch (error) {
+            console.error('多言語設定読み込みエラー:', error);
+        }
+    }
+
+    displayMultilingualSettings(settings) {
+        // 言語設定のチェックボックスを更新
+        settings.forEach(setting => {
+            const checkbox = document.querySelector(`input[data-language="${setting.language_code}"]`);
+            if (checkbox) {
+                checkbox.checked = setting.is_enabled;
+                // 既存のイベントリスナーを削除してから新しいものを追加
+                checkbox.removeEventListener('change', checkbox._multilingualHandler);
+                checkbox._multilingualHandler = () => this.updateMultilingualSetting(setting.language_code, checkbox.checked);
+                checkbox.addEventListener('change', checkbox._multilingualHandler);
+            }
+        });
+    }
+
+    async updateMultilingualSetting(languageCode, isEnabled) {
+        // 既に処理中の場合は無視
+        if (this.updatingMultilingualSetting) {
+            return;
+        }
+        
+        try {
+            this.updatingMultilingualSetting = true;
+            const settings = {};
+            settings[languageCode] = isEnabled;
+            
+            console.log('多言語設定更新:', { site_id: this.currentSiteId, language: languageCode, enabled: isEnabled });
+            
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_multilingual_settings',
+                    site_id: this.currentSiteId,
+                    settings: settings
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            console.log('多言語設定更新結果:', result);
+            
+            if (!result.success) {
+                console.error('多言語設定更新エラー:', result.error);
+                alert('多言語設定の更新に失敗しました: ' + result.error);
+            } else {
+                console.log(`言語 ${languageCode} が ${isEnabled ? '有効' : '無効'} になりました`);
+            }
+        } catch (error) {
+            console.error('多言語設定更新エラー:', error);
+            alert('多言語設定の更新中にエラーが発生しました。');
+        } finally {
+            this.updatingMultilingualSetting = false;
+        }
+    }
+
+    async changeArticleLanguage(languageCode) {
+        if (!this.currentSiteId) return;
+        
+        this.currentLanguage = languageCode;
+        this.showLoading();
+        
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_multilingual_articles',
+                    site_id: this.currentSiteId,
+                    language_code: languageCode
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.articles = result.articles;
+                this.displayArticleOutline();
+            }
+        } catch (error) {
+            console.error('言語切り替えエラー:', error);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async changeArticleDetailLanguage(languageCode) {
+        const currentArticleId = this.currentDetailArticleId;
+        if (!currentArticleId) return;
+        
+        if (languageCode === 'ja') {
+            // 日本語の場合はオリジナル記事を表示
+            this.showArticleDetail(currentArticleId);
+        } else {
+            // 多言語版を表示
+            this.showMultilingualArticleDetail(currentArticleId, languageCode);
+        }
+    }
+
+    async showMultilingualArticleDetail(articleId, languageCode) {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_article_translations',
+                    article_id: articleId
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                const translation = result.translations.find(t => t.language_code === languageCode);
+                if (translation) {
+                    document.getElementById('article-detail-content').innerHTML = `
+                        <h3>${translation.title}</h3>
+                        <p><strong>SEOキーワード:</strong> ${translation.seo_keywords}</p>
+                        <p><strong>概要:</strong> ${translation.summary}</p>
+                        <hr>
+                        <div style="white-space: pre-wrap; line-height: 1.6;">${translation.content}</div>
+                    `;
+                } else {
+                    document.getElementById('article-detail-content').innerHTML = `
+                        <p>この記事の${languageCode}翻訳はまだ作成されていません。</p>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('多言語記事詳細エラー:', error);
+        }
+    }
+
+    async generateMultilingualArticles() {
+        if (!this.currentSiteId) {
+            alert('まずサイトを選択してください。');
+            return;
+        }
+
+        // 日本語記事が作成済みかチェック
+        const hasJapaneseArticles = await this.checkJapaneseArticles();
+        if (!hasJapaneseArticles) {
+            alert('多言語記事を生成するには、まず日本語記事を作成してください。');
+            return;
+        }
+
+        if (!confirm('有効な言語で多言語記事を生成しますか？')) {
+            return;
+        }
+
+        this.showMultilingualProgress('準備中...');
+        
+        try {
+            // まず準備処理を実行して進捗IDを取得
+            const startResponse = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'generate_multilingual_articles_with_progress',
+                    site_id: this.currentSiteId,
+                    ai_model: this.aiModelSelect.value
+                })
+            });
+            const startResult = await this.handleApiResponse(startResponse);
+            
+            if (!startResult.success) {
+                this.hideMultilingualProgress();
+                alert('エラー: ' + startResult.error);
+                return;
+            }
+            
+            // 進捗IDを保存して進捗ポーリングを開始
+            this.currentProgressId = startResult.progress_id;
+            this.totalProgressTasks = startResult.total_tasks;
+            this.startProgressPolling();
+            
+            // 翻訳処理を開始
+            try {
+                const executeResponse = await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'execute_multilingual_generation',
+                        site_id: this.currentSiteId,
+                        ai_model: this.aiModelSelect.value,
+                        progress_id: this.currentProgressId
+                    })
+                });
+                
+                const executeResult = await this.handleApiResponse(executeResponse);
+                console.log('翻訳処理完了:', executeResult);
+                
+                // 進捗ポーリングを停止
+                this.stopProgressPolling();
+                this.hideMultilingualProgress();
+                
+                if (executeResult.success) {
+                    alert(`${executeResult.translated_count}件の多言語記事を生成しました。`);
+                    // 現在の言語で記事一覧を更新
+                    this.changeArticleLanguage(this.currentLanguage);
+                } else {
+                    alert('エラー: ' + executeResult.error);
+                }
+            } catch (executeError) {
+                console.error('翻訳処理エラー:', executeError);
+                this.stopProgressPolling();
+                this.hideMultilingualProgress();
+                alert('翻訳処理中にエラーが発生しました。');
+            }
+            
+        } catch (error) {
+            console.error('多言語記事生成エラー:', error);
+            this.stopProgressPolling();
+            this.hideMultilingualProgress();
+            alert('多言語記事生成中にエラーが発生しました。');
+        }
+    }
+
+    showMultilingualProgress(message) {
+        let progressModal = document.getElementById('multilingual-progress-modal');
+        if (!progressModal) {
+            progressModal = document.createElement('div');
+            progressModal.id = 'multilingual-progress-modal';
+            progressModal.innerHTML = `
+                <div class="modal-overlay">
+                    <div class="modal-content">
+                        <h3>多言語記事生成中</h3>
+                        <div id="multilingual-progress-message">${message}</div>
+                        <div class="progress-bar">
+                            <div id="multilingual-progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div id="multilingual-progress-details"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(progressModal);
+        }
+        progressModal.style.display = 'block';
+        document.getElementById('multilingual-progress-message').textContent = message;
+    }
+
+    updateMultilingualProgress(articleTitle, language, current, total) {
+        const progressFill = document.getElementById('multilingual-progress-fill');
+        const progressDetails = document.getElementById('multilingual-progress-details');
+        const progressMessage = document.getElementById('multilingual-progress-message');
+        
+        if (progressFill && progressDetails && progressMessage) {
+            const percentage = Math.round((current / total) * 100);
+            progressFill.style.width = `${percentage}%`;
+            progressMessage.textContent = `${current}/${total}件の多言語記事を生成中`;
+            progressDetails.innerHTML = `
+                <p><strong>記事:</strong> ${articleTitle}</p>
+                <p><strong>言語:</strong> ${language}</p>
+            `;
+        }
+    }
+
+    hideMultilingualProgress() {
+        const progressModal = document.getElementById('multilingual-progress-modal');
+        if (progressModal) {
+            progressModal.style.display = 'none';
+        }
+    }
+
+    startProgressPolling() {
+        if (!this.currentProgressId) {
+            console.error('進捗IDが設定されていません');
+            return;
+        }
+        
+        console.log('進捗ポーリング開始 - ID:', this.currentProgressId);
+        
+        this.progressPollingInterval = setInterval(async () => {
+            try {
+                console.log('進捗取得中... ID:', this.currentProgressId);
+                
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'get_translation_progress',
+                        progress_id: this.currentProgressId
+                    })
+                });
+                
+                const result = await this.handleApiResponse(response);
+                console.log('進捗結果:', result);
+                
+                if (result.success && result.progress) {
+                    const progress = result.progress;
+                    console.log('進捗データ:', progress);
+                    
+                    this.updateMultilingualProgress(
+                        progress.article_title || '記事を翻訳中...',
+                        progress.language || '処理中',
+                        progress.current || 0,
+                        progress.total || this.totalProgressTasks
+                    );
+                    
+                    // 完了チェック
+                    if (progress.current >= progress.total && progress.article_title === '完了') {
+                        console.log('処理完了を検出');
+                        this.stopProgressPolling();
+                        this.hideMultilingualProgress();
+                        alert(`多言語記事生成が完了しました。${progress.language}`);
+                        // 現在の言語で記事一覧を更新
+                        this.changeArticleLanguage(this.currentLanguage);
+                    }
+                    
+                    // エラーチェック
+                    if (progress.article_title === 'エラー') {
+                        console.log('エラーを検出');
+                        this.stopProgressPolling();
+                        this.hideMultilingualProgress();
+                        alert('エラーが発生しました: ' + progress.language);
+                    }
+                } else if (!result.success && result.error === 'Progress expired') {
+                    console.log('進捗ファイル期限切れ');
+                    // 進捗ファイルが期限切れ（処理が完了している可能性）
+                    this.stopProgressPolling();
+                    this.hideMultilingualProgress();
+                    alert('多言語記事生成が完了しました。');
+                    this.changeArticleLanguage(this.currentLanguage);
+                } else {
+                    console.log('進捗取得失敗:', result);
+                }
+            } catch (error) {
+                console.error('進捗取得エラー:', error);
+            }
+        }, 3000); // 3秒間隔で更新
+    }
+
+    stopProgressPolling() {
+        if (this.progressPollingInterval) {
+            clearInterval(this.progressPollingInterval);
+            this.progressPollingInterval = null;
+        }
+        this.currentProgressId = null;
+        this.totalProgressTasks = 0;
+    }
+
+    async checkJapaneseArticles() {
+        try {
+            console.log('日本語記事チェック開始 - サイトID:', this.currentSiteId);
+            
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_articles',
+                    site_id: this.currentSiteId
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            console.log('取得した記事データ:', result);
+            
+            if (result.success && result.articles && result.articles.length > 0) {
+                console.log('全記事数:', result.articles.length);
+                
+                // 各記事のcontentをチェック
+                result.articles.forEach((article, index) => {
+                    console.log(`記事${index + 1}:`, {
+                        id: article.id,
+                        title: article.title,
+                        status: article.status,
+                        hasContent: !!article.content,
+                        contentLength: article.content ? article.content.length : 0,
+                        contentPreview: article.content ? article.content.substring(0, 100) + '...' : 'なし'
+                    });
+                });
+                
+                // コンテンツが作成済みの記事があるかチェック
+                const articlesWithContent = result.articles.filter(article => 
+                    article.content && article.content.trim() !== ''
+                );
+                
+                console.log('コンテンツありの記事数:', articlesWithContent.length);
+                console.log('コンテンツありの記事:', articlesWithContent.map(a => ({ id: a.id, title: a.title })));
+                
+                return articlesWithContent.length > 0;
+            }
+            
+            console.log('記事が見つからないか、取得に失敗');
+            return false;
+        } catch (error) {
+            console.error('日本語記事チェックエラー:', error);
+            return false;
+        }
+    }
+
+    // 初期状態で多言語設定のチェックボックスを設定
+    initializeMultilingualSettings() {
+        const languages = [
+            { code: 'en', name: 'English' },
+            { code: 'zh-CN', name: '中文（简体）' },
+            { code: 'zh-TW', name: '中文（繁體）' },
+            { code: 'ko', name: '한국어' },
+            { code: 'es', name: 'Español' },
+            { code: 'ar', name: 'العربية' },
+            { code: 'pt', name: 'Português' },
+            { code: 'fr', name: 'Français' },
+            { code: 'de', name: 'Deutsch' },
+            { code: 'ru', name: 'Русский' },
+            { code: 'it', name: 'Italiano' }
+        ];
+
+        languages.forEach(language => {
+            const checkbox = document.querySelector(`input[data-language="${language.code}"]`);
+            if (checkbox) {
+                checkbox.checked = false; // 初期状態は無効
+                checkbox.addEventListener('change', () => {
+                    if (this.currentSiteId) {
+                        this.updateMultilingualSetting(language.code, checkbox.checked);
+                    } else {
+                        // サイトが選択されていない場合は警告
+                        alert('サイトを選択または作成後に言語設定を変更してください。');
+                        checkbox.checked = false;
+                    }
+                });
+            }
+        });
     }
 }
 

@@ -121,6 +121,18 @@ try {
             }
             sendJsonResponse(analyzeSites($input['urls'], $input['ai_model']));
             break;
+        case 'analyze_sites_group':
+            if (!isset($input['urls']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'urls and ai_model are required']);
+            }
+            sendJsonResponse(analyzeSitesGroup($input['urls'], $input['ai_model'], $input['group_index'] ?? 1, $input['total_groups'] ?? 1));
+            break;
+        case 'integrate_analyses':
+            if (!isset($input['analyses']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'analyses and ai_model are required']);
+            }
+            sendJsonResponse(integrateAnalyses($input['analyses'], $input['ai_model'], $input['total_urls'] ?? 0, $input['base_url'] ?? ''));
+            break;
         case 'create_article_outline':
             if (!isset($input['site_id']) || !isset($input['ai_model'])) {
                 sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
@@ -180,6 +192,61 @@ try {
             $limit = $input['limit'] ?? 50;
             $offset = $input['offset'] ?? 0;
             sendJsonResponse(getAiUsageLogs($siteId, $limit, $offset));
+            break;
+        case 'get_multilingual_settings':
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
+            sendJsonResponse(getMultilingualSettings($input['site_id']));
+            break;
+        case 'update_multilingual_settings':
+            if (!isset($input['site_id']) || !isset($input['settings'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and settings are required']);
+            }
+            sendJsonResponse(updateMultilingualSettings($input['site_id'], $input['settings']));
+            break;
+        case 'generate_multilingual_articles':
+            if (!isset($input['site_id']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
+            }
+            sendJsonResponse(generateMultilingualArticles($input['site_id'], $input['ai_model']));
+            break;
+        case 'generate_multilingual_articles_with_progress':
+            if (!isset($input['site_id']) || !isset($input['ai_model'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
+            }
+            sendJsonResponse(startMultilingualArticleGeneration($input['site_id'], $input['ai_model']));
+            break;
+        case 'get_multilingual_articles':
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
+            $languageCode = $input['language_code'] ?? null;
+            sendJsonResponse(getMultilingualArticles($input['site_id'], $languageCode));
+            break;
+        case 'get_article_translations':
+            if (!isset($input['article_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_id is required']);
+            }
+            sendJsonResponse(getArticleTranslations($input['article_id']));
+            break;
+        case 'get_articles':
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
+            sendJsonResponse(getArticles($input['site_id']));
+            break;
+        case 'get_translation_progress':
+            if (!isset($input['progress_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'progress_id is required']);
+            }
+            sendJsonResponse(getTranslationProgress($input['progress_id']));
+            break;
+        case 'execute_multilingual_generation':
+            if (!isset($input['site_id']) || !isset($input['ai_model']) || !isset($input['progress_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id, ai_model, and progress_id are required']);
+            }
+            sendJsonResponse(executeMultilingualGeneration($input['site_id'], $input['ai_model'], $input['progress_id']));
             break;
         default:
             sendJsonResponse(['success' => false, 'error' => 'Invalid action']);
@@ -303,6 +370,166 @@ function analyzeSites($urls, $aiModel) {
             'analysis' => $analysis
         ];
     } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function analyzeSitesGroup($urls, $aiModel, $groupIndex, $totalGroups) {
+    try {
+        // URLからサイト情報を取得
+        $siteContents = [];
+        $failedUrls = [];
+        
+        foreach ($urls as $url) {
+            $content = fetchWebContent($url);
+            if ($content) {
+                // HTMLからテキストを抽出
+                $textContent = extractTextFromHtml($content);
+                if (!empty($textContent) && strlen(trim($textContent)) > 100) {
+                    $siteContents[] = [
+                        'url' => $url,
+                        'content' => substr($textContent, 0, 3000) // 長すぎる場合は切り詰め
+                    ];
+                } else {
+                    $failedUrls[] = $url . ' (insufficient content)';
+                }
+            } else {
+                $failedUrls[] = $url . ' (fetch failed)';
+            }
+        }
+        
+        // ログ出力
+        error_log("Group {$groupIndex}: Processed " . count($siteContents) . " URLs successfully, " . count($failedUrls) . " failed");
+        if (!empty($failedUrls)) {
+            error_log("Failed URLs in group {$groupIndex}: " . implode(', ', $failedUrls));
+        }
+        
+        // 有効なコンテンツが1つもない場合は空の分析結果を返す
+        if (empty($siteContents)) {
+            return [
+                'success' => true,
+                'analysis' => "このグループのURLからは有効なコンテンツを取得できませんでした。",
+                'group_index' => $groupIndex,
+                'total_groups' => $totalGroups,
+                'processed_urls' => 0,
+                'failed_urls' => count($failedUrls)
+            ];
+        }
+        
+        // AIでサイト分析
+        $aiService = new AIService();
+        $analysisPrompt = createAnalysisPrompt($siteContents);
+        
+        $startTime = microtime(true);
+        $analysis = $aiService->generateText($analysisPrompt, $aiModel);
+        $processingTime = microtime(true) - $startTime;
+        
+        return [
+            'success' => true,
+            'analysis' => $analysis,
+            'group_index' => $groupIndex,
+            'total_groups' => $totalGroups,
+            'processed_urls' => count($siteContents),
+            'failed_urls' => count($failedUrls)
+        ];
+    } catch (Exception $e) {
+        error_log("Error in analyzeSitesGroup: " . $e->getMessage());
+        return [
+            'success' => true,
+            'analysis' => "このグループの分析中にエラーが発生しました：" . $e->getMessage(),
+            'group_index' => $groupIndex,
+            'total_groups' => $totalGroups,
+            'processed_urls' => 0,
+            'failed_urls' => count($urls)
+        ];
+    }
+}
+
+function integrateAnalyses($analyses, $aiModel, $totalUrls, $baseUrl) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 有効な分析結果のみを抽出
+        $validAnalyses = array_filter($analyses, function($analysis) {
+            return !empty(trim($analysis)) && 
+                   !strpos($analysis, 'エラーが発生しました') && 
+                   !strpos($analysis, '有効なコンテンツを取得できませんでした');
+        });
+        
+        if (empty($validAnalyses)) {
+            // 有効な分析結果がない場合は基本的なサイト情報を作成
+            $siteName = extractSiteName($baseUrl);
+            $basicAnalysis = "# サイト分析結果\n\n";
+            $basicAnalysis .= "**サイト名**: {$siteName}\n";
+            $basicAnalysis .= "**URL**: {$baseUrl}\n\n";
+            $basicAnalysis .= "**注意**: このサイトの詳細な分析は、コンテンツの取得に問題があったため実行できませんでした。\n";
+            $basicAnalysis .= "手動でサイトの特徴を確認して記事作成を進めてください。\n";
+            
+            $stmt = $pdo->prepare("INSERT INTO sites (name, url, analysis_result, features, keywords) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $siteName,
+                $baseUrl,
+                $basicAnalysis,
+                '',
+                ''
+            ]);
+            
+            $siteId = $pdo->lastInsertId();
+            
+            return [
+                'success' => true,
+                'site_id' => $siteId,
+                'analysis' => $basicAnalysis
+            ];
+        }
+        
+        // 複数の分析結果を統合するプロンプトを作成
+        $integrationPrompt = "以下は同一サイトの複数のページを分析した結果です。これらを統合して、サイト全体の包括的な分析結果を作成してください。\n\n";
+        
+        foreach ($validAnalyses as $index => $analysis) {
+            $integrationPrompt .= "=== 分析結果 " . ($index + 1) . " ===\n";
+            $integrationPrompt .= $analysis . "\n\n";
+        }
+        
+        $integrationPrompt .= "統合の要件：\n";
+        $integrationPrompt .= "- 各分析結果の共通点と相違点を整理\n";
+        $integrationPrompt .= "- サイト全体の特徴とテーマを明確化\n";
+        $integrationPrompt .= "- 矛盾する情報は適切に統合または除外\n";
+        $integrationPrompt .= "- 最終的にマークダウン形式で出力\n";
+        
+        // AIで統合分析
+        $aiService = new AIService();
+        $startTime = microtime(true);
+        $integratedAnalysis = $aiService->generateText($integrationPrompt, $aiModel);
+        $processingTime = microtime(true) - $startTime;
+        
+        // サイト情報をDBに保存
+        $siteName = extractSiteName($baseUrl);
+        $stmt = $pdo->prepare("INSERT INTO sites (name, url, analysis_result, features, keywords) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $siteName,
+            $baseUrl,
+            $integratedAnalysis,
+            '',
+            ''
+        ]);
+        
+        $siteId = $pdo->lastInsertId();
+        
+        // AI使用ログを記録
+        logAiUsage($siteId, null, $aiModel, 'site_analysis_integration', $integrationPrompt, $integratedAnalysis, $processingTime);
+        
+        // サイト分析履歴にも記録
+        $stmt = $pdo->prepare("INSERT INTO site_analysis_history (site_id, ai_model, analysis_result) VALUES (?, ?, ?)");
+        $stmt->execute([$siteId, $aiModel, $integratedAnalysis]);
+        
+        return [
+            'success' => true,
+            'site_id' => $siteId,
+            'analysis' => $integratedAnalysis
+        ];
+    } catch (Exception $e) {
+        error_log("Error in integrateAnalyses: " . $e->getMessage());
         return ['success' => false, 'error' => $e->getMessage()];
     }
 }
@@ -821,14 +1048,15 @@ function updatePublishDate($articleId, $publishDate) {
 
 function crawlSiteUrls($baseUrl) {
     try {
-        $parsedUrl = parse_url($baseUrl);
-        if (!$parsedUrl || !isset($parsedUrl['host'])) {
+        $parsedBaseUrl = parse_url($baseUrl);
+        if (!$parsedBaseUrl || !isset($parsedBaseUrl['host'])) {
             return ['success' => false, 'error' => 'Invalid URL'];
         }
         
-        $domain = $parsedUrl['host'];
-        $scheme = $parsedUrl['scheme'] ?? 'https';
-        $baseDomain = $scheme . '://' . $domain;
+        $domain = $parsedBaseUrl['host'];
+        $scheme = $parsedBaseUrl['scheme'] ?? 'https';
+        $basePath = rtrim($parsedBaseUrl['path'] ?? '/', '/') . '/';
+        $baseUrlPrefix = $scheme . '://' . $domain . $basePath;
         
         $foundUrls = [];
         $visitedUrls = [];
@@ -851,16 +1079,16 @@ function crawlSiteUrls($baseUrl) {
                 continue;
             }
             
-            // リンクを抽出
-            $links = extractLinksFromHtml($html, $currentUrl, $domain);
+            // リンクを抽出（ベースURL以下の階層のみ）
+            $links = extractLinksFromHtmlWithPathFilter($html, $currentUrl, $domain, $baseUrlPrefix);
             error_log("Found " . count($links) . " links from: " . $currentUrl);
             
             foreach ($links as $link) {
                 if (!in_array($link, $foundUrls) && !in_array($link, $visitedUrls)) {
                     $foundUrls[] = $link;
                     
-                    // 同じドメインのURLのみを巡回対象に追加
-                    if (strpos($link, $baseDomain) === 0 && count($urlsToVisit) < 50) {
+                    // ベースURL以下の階層のURLのみを巡回対象に追加
+                    if (isUrlUnderBasePath($link, $baseUrlPrefix) && count($urlsToVisit) < 50) {
                         $urlsToVisit[] = $link;
                     }
                 }
@@ -915,6 +1143,72 @@ function extractLinksFromHtml($html, $baseUrl, $domain) {
     }
     
     return array_unique($links);
+}
+
+function extractLinksFromHtmlWithPathFilter($html, $baseUrl, $domain, $baseUrlPrefix) {
+    $links = [];
+    
+    if (empty($html)) {
+        return $links;
+    }
+    
+    // DOMDocumentを使用してHTMLを解析
+    $dom = new DOMDocument();
+    libxml_use_internal_errors(true);
+    $dom->loadHTML($html);
+    libxml_clear_errors();
+    
+    $anchorTags = $dom->getElementsByTagName('a');
+    
+    foreach ($anchorTags as $anchor) {
+        $href = $anchor->getAttribute('href');
+        
+        if (empty($href) || $href === '#') {
+            continue;
+        }
+        
+        // 相対URLを絶対URLに変換
+        $absoluteUrl = resolveUrl($href, $baseUrl);
+        
+        // 同じドメインでベースURL以下の階層のURLのみを対象とする
+        if (strpos($absoluteUrl, 'http') === 0 && strpos($absoluteUrl, $domain) !== false && isUrlUnderBasePath($absoluteUrl, $baseUrlPrefix)) {
+            // フラグメント（#）を除去
+            $absoluteUrl = strtok($absoluteUrl, '#');
+            
+            // 特定のファイル形式を除外
+            if (!preg_match('/\.(jpg|jpeg|png|gif|pdf|zip|doc|docx|xls|xlsx)$/i', $absoluteUrl)) {
+                $links[] = $absoluteUrl;
+            }
+        }
+    }
+    
+    return array_unique($links);
+}
+
+function isUrlUnderBasePath($url, $baseUrlPrefix) {
+    // URLがベースURL以下の階層にあるかチェック
+    if (strpos($url, $baseUrlPrefix) === 0) {
+        return true;
+    }
+    
+    // ベースURLの階層と同じレベルかチェック
+    $parsedUrl = parse_url($url);
+    $parsedBase = parse_url($baseUrlPrefix);
+    
+    if (!$parsedUrl || !$parsedBase) {
+        return false;
+    }
+    
+    $urlPath = rtrim($parsedUrl['path'] ?? '/', '/');
+    $basePath = rtrim($parsedBase['path'] ?? '/', '/');
+    
+    // ベースパスが空の場合（ルート）は、同じドメインのすべてのURLを許可
+    if (empty($basePath) || $basePath === '/') {
+        return true;
+    }
+    
+    // URLパスがベースパス以下にあるかチェック
+    return strpos($urlPath, $basePath) === 0;
 }
 
 function resolveUrl($href, $baseUrl) {
@@ -1087,6 +1381,917 @@ function getAiUsageLogs($siteId = null, $limit = 50, $offset = 0) {
         return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
         return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function getMultilingualSettings($siteId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ? ORDER BY language_code");
+        $stmt->execute([$siteId]);
+        $settings = $stmt->fetchAll();
+        
+        return ['success' => true, 'settings' => $settings];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function updateMultilingualSettings($siteId, $settings) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        error_log("updateMultilingualSettings called with siteId: $siteId, settings: " . json_encode($settings));
+        
+        // まず、該当するレコードが存在するかチェック
+        $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM multilingual_settings WHERE site_id = ?");
+        $checkStmt->execute([$siteId]);
+        $recordCount = $checkStmt->fetchColumn();
+        
+        error_log("Found $recordCount multilingual settings records for site $siteId");
+        
+        if ($recordCount === 0) {
+            // レコードが存在しない場合は作成
+            error_log("Creating default multilingual settings for site $siteId");
+            createDefaultLanguageSettings($pdo, $siteId);
+        }
+        
+        $stmt = $pdo->prepare("UPDATE multilingual_settings SET is_enabled = ? WHERE site_id = ? AND language_code = ?");
+        
+        foreach ($settings as $languageCode => $isEnabled) {
+            $boolValue = $isEnabled ? 1 : 0;
+            error_log("Updating language $languageCode to $boolValue for site $siteId");
+            
+            $result = $stmt->execute([$boolValue, $siteId, $languageCode]);
+            $affectedRows = $stmt->rowCount();
+            
+            error_log("Update result: $result, affected rows: $affectedRows");
+            
+            if ($affectedRows === 0) {
+                error_log("No rows updated for language $languageCode, attempting to insert");
+                // 更新できなかった場合は挿入を試行
+                $insertStmt = $pdo->prepare("INSERT INTO multilingual_settings (site_id, language_code, language_name, is_enabled) VALUES (?, ?, ?, ?)");
+                $languageNames = [
+                    'en' => 'English',
+                    'zh-CN' => '中文（简体）',
+                    'zh-TW' => '中文（繁體）',
+                    'ko' => '한국어',
+                    'es' => 'Español',
+                    'ar' => 'العربية',
+                    'pt' => 'Português',
+                    'fr' => 'Français',
+                    'de' => 'Deutsch',
+                    'ru' => 'Русский',
+                    'it' => 'Italiano'
+                ];
+                $languageName = $languageNames[$languageCode] ?? $languageCode;
+                $insertStmt->execute([$siteId, $languageCode, $languageName, $boolValue]);
+            }
+        }
+        
+        return ['success' => true, 'message' => 'Multilingual settings updated successfully'];
+    } catch (PDOException $e) {
+        error_log("Database error in updateMultilingualSettings: " . $e->getMessage());
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        error_log("General error in updateMultilingualSettings: " . $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function generateMultilingualArticles($siteId, $aiModel) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 多言語設定テーブルが存在しない場合は作成
+        $stmt = $pdo->query("SHOW TABLES LIKE 'multilingual_settings'");
+        if ($stmt->rowCount() === 0) {
+            createMultilingualTables($pdo);
+        }
+        
+        // 当該サイトの言語設定が存在しない場合は作成
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM multilingual_settings WHERE site_id = ?");
+        $stmt->execute([$siteId]);
+        if ($stmt->fetchColumn() === 0) {
+            createDefaultLanguageSettings($pdo, $siteId);
+        }
+        
+        // 有効な言語設定を取得
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ? AND is_enabled = 1");
+        $stmt->execute([$siteId]);
+        $enabledLanguages = $stmt->fetchAll();
+        
+        error_log("generateMultilingualArticles: Found " . count($enabledLanguages) . " enabled languages for site $siteId");
+        
+        // デバッグ用：全ての言語設定を取得
+        $debugStmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ?");
+        $debugStmt->execute([$siteId]);
+        $allLanguages = $debugStmt->fetchAll();
+        error_log("generateMultilingualArticles: All languages for site $siteId: " . json_encode($allLanguages));
+        
+        if (empty($enabledLanguages)) {
+            return ['success' => false, 'error' => 'No languages enabled for translation. Please enable languages in the multilingual settings first.'];
+        }
+        
+        // 日本語の記事を取得（コンテンツが作成済みの記事のみ）
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? AND status IN ('draft', 'generated') AND content IS NOT NULL AND content != ''");
+        $stmt->execute([$siteId]);
+        $articles = $stmt->fetchAll();
+        
+        if (empty($articles)) {
+            return ['success' => false, 'error' => 'No articles with content found for translation. Please create full Japanese articles first.'];
+        }
+        
+        $aiService = new AIService();
+        $translatedCount = 0;
+        
+        foreach ($articles as $article) {
+            foreach ($enabledLanguages as $language) {
+                // 既に翻訳済みかチェック
+                $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+                $stmt->execute([$article['id'], $language['language_code']]);
+                $existing = $stmt->fetch();
+                
+                if ($existing) {
+                    continue; // 既に翻訳済みの場合はスキップ
+                }
+                
+                // 記事のコンテンツが存在しない場合はスキップ
+                if (empty($article['content']) || trim($article['content']) === '') {
+                    continue;
+                }
+                
+                // 翻訳プロンプトを作成（改善版を使用）
+                $languageName = getLanguageName($language['language_code']);
+                $translationPrompt = createImprovedTranslationPrompt($article, $language['language_code'], $languageName);
+                
+                $startTime = microtime(true);
+                $translatedContent = $aiService->generateText($translationPrompt, $aiModel);
+                $processingTime = microtime(true) - $startTime;
+                
+                // 翻訳結果をパース
+                $translatedArticle = parseTranslatedArticle($translatedContent);
+                
+                // 多言語記事を保存
+                $stmt = $pdo->prepare("INSERT INTO multilingual_articles (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'generated')");
+                $stmt->execute([
+                    $article['id'],
+                    $language['language_code'],
+                    $translatedArticle['title'],
+                    $translatedArticle['keywords'],
+                    $translatedArticle['summary'],
+                    $translatedArticle['content'],
+                    $aiModel
+                ]);
+                
+                // AI使用ログを記録
+                logAiUsage($siteId, $article['id'], $aiModel, 'multilingual_translation', $translationPrompt, $translatedContent, $processingTime);
+                
+                $translatedCount++;
+            }
+        }
+        
+        return ['success' => true, 'translated_count' => $translatedCount];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function getMultilingualArticles($siteId, $languageCode = null) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        if ($languageCode === null || $languageCode === 'ja') {
+            // 日本語（オリジナル）の記事を取得
+            $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? ORDER BY created_at DESC");
+            $stmt->execute([$siteId]);
+            $articles = $stmt->fetchAll();
+        } else {
+            // 指定された言語の記事を取得
+            $stmt = $pdo->prepare("
+                SELECT 
+                    ma.*,
+                    a.publish_date
+                FROM multilingual_articles ma
+                JOIN articles a ON ma.original_article_id = a.id
+                WHERE a.site_id = ? AND ma.language_code = ?
+                ORDER BY ma.created_at DESC
+            ");
+            $stmt->execute([$siteId, $languageCode]);
+            $articles = $stmt->fetchAll();
+        }
+        
+        return ['success' => true, 'articles' => $articles];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function startMultilingualArticleGeneration($siteId, $aiModel) {
+    try {
+        // 進捗IDを生成
+        $progressId = uniqid('progress_', true);
+        
+        // 事前チェック
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 多言語設定テーブルが存在しない場合は作成
+        $stmt = $pdo->query("SHOW TABLES LIKE 'multilingual_settings'");
+        if ($stmt->rowCount() === 0) {
+            createMultilingualTables($pdo);
+        }
+        
+        // 当該サイトの言語設定が存在しない場合は作成
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM multilingual_settings WHERE site_id = ?");
+        $stmt->execute([$siteId]);
+        if ($stmt->fetchColumn() === 0) {
+            createDefaultLanguageSettings($pdo, $siteId);
+        }
+        
+        // 有効な言語設定を取得
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ? AND is_enabled = 1");
+        $stmt->execute([$siteId]);
+        $enabledLanguages = $stmt->fetchAll();
+        
+        if (empty($enabledLanguages)) {
+            return ['success' => false, 'error' => 'No languages enabled for translation.'];
+        }
+        
+        // 日本語の記事を取得（コンテンツが作成済みの記事のみ）
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? AND status IN ('draft', 'generated') AND content IS NOT NULL AND content != ''");
+        $stmt->execute([$siteId]);
+        $articles = $stmt->fetchAll();
+        
+        if (empty($articles)) {
+            return ['success' => false, 'error' => 'No articles with content found for translation.'];
+        }
+        
+        // 総タスク数を計算
+        $totalTasks = 0;
+        foreach ($articles as $article) {
+            foreach ($enabledLanguages as $language) {
+                // 既に翻訳済みかチェック
+                $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+                $stmt->execute([$article['id'], $language['language_code']]);
+                if (!$stmt->fetch()) {
+                    $totalTasks++;
+                }
+            }
+        }
+        
+        // 進捗を初期化
+        updateTranslationProgress($progressId, 0, $totalTasks, '準備完了', '初期化中');
+        
+        // 進捗IDを即座に返す
+        return [
+            'success' => true, 
+            'progress_id' => $progressId,
+            'total_tasks' => $totalTasks,
+            'message' => 'Translation started'
+        ];
+        
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
+    try {
+        error_log("executeMultilingualGeneration開始 - サイトID: {$siteId}, 進捗ID: {$progressId}");
+        
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 有効な言語設定を取得
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ? AND is_enabled = 1");
+        $stmt->execute([$siteId]);
+        $enabledLanguages = $stmt->fetchAll();
+        
+        error_log("有効言語数: " . count($enabledLanguages));
+        
+        // 日本語の記事を取得（コンテンツが作成済みの記事のみ）
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? AND status IN ('draft', 'generated') AND content IS NOT NULL AND content != ''");
+        $stmt->execute([$siteId]);
+        $articles = $stmt->fetchAll();
+        
+        error_log("対象記事数: " . count($articles));
+        
+        $aiService = new AIService();
+        $translatedCount = 0;
+        $totalTasks = 0;
+        
+        // 総タスク数を再計算
+        foreach ($articles as $article) {
+            foreach ($enabledLanguages as $language) {
+                // 既に翻訳済みかチェック
+                $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+                $stmt->execute([$article['id'], $language['language_code']]);
+                if (!$stmt->fetch()) {
+                    $totalTasks++;
+                }
+            }
+        }
+        
+        error_log("翻訳タスク総数: {$totalTasks}");
+        
+        $currentTask = 0;
+        
+        foreach ($articles as $article) {
+            foreach ($enabledLanguages as $language) {
+                // 既に翻訳済みかチェック
+                $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+                $stmt->execute([$article['id'], $language['language_code']]);
+                if ($stmt->fetch()) {
+                    continue;
+                }
+                
+                $currentTask++;
+                
+                // 言語名を取得
+                $languageName = getLanguageName($language['language_code']);
+                
+                // 進捗を更新
+                error_log("進捗更新: {$currentTask}/{$totalTasks} - {$article['title']} -> {$languageName}");
+                updateTranslationProgress($progressId, $currentTask, $totalTasks, $article['title'], $languageName);
+                
+                // 翻訳プロンプトを作成（強化版を使用）
+                $translationPrompt = createEnhancedTranslationPrompt($article, $language['language_code'], $languageName);
+                
+                $startTime = microtime(true);
+                $translatedContent = $aiService->generateText($translationPrompt, $aiModel);
+                $processingTime = microtime(true) - $startTime;
+                
+                // 翻訳結果をパース（改善版を使用）
+                $translatedArticle = parseTranslatedArticleEnhanced($translatedContent);
+                
+                // デバッグログ
+                error_log("翻訳結果 - タイトル: " . $translatedArticle['title'] . ", コンテンツ長: " . strlen($translatedArticle['content']));
+                
+                // 多言語記事を保存
+                $stmt = $pdo->prepare("INSERT INTO multilingual_articles (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'generated')");
+                $stmt->execute([
+                    $article['id'],
+                    $language['language_code'],
+                    $translatedArticle['title'],
+                    $translatedArticle['keywords'],
+                    $translatedArticle['summary'],
+                    $translatedArticle['content'],
+                    $aiModel
+                ]);
+                
+                // AI使用ログを記録
+                logAiUsage($siteId, $article['id'], $aiModel, 'multilingual_translation', $translationPrompt, $translatedContent, $processingTime);
+                
+                $translatedCount++;
+            }
+        }
+        
+        // 完了時の進捗更新
+        updateTranslationProgress($progressId, $totalTasks, $totalTasks, '完了', "計{$translatedCount}件作成");
+        
+        error_log("多言語記事生成完了: {$translatedCount}件");
+        
+        return ['success' => true, 'translated_count' => $translatedCount];
+        
+    } catch (Exception $e) {
+        error_log("多言語記事生成エラー: " . $e->getMessage());
+        updateTranslationProgress($progressId, 0, 0, 'エラー', $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function generateMultilingualArticlesWithProgress($siteId, $aiModel) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // 進捗IDを生成
+        $progressId = uniqid('progress_', true);
+        
+        // 多言語設定テーブルが存在しない場合は作成
+        $stmt = $pdo->query("SHOW TABLES LIKE 'multilingual_settings'");
+        if ($stmt->rowCount() === 0) {
+            createMultilingualTables($pdo);
+        }
+        
+        // 当該サイトの言語設定が存在しない場合は作成
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM multilingual_settings WHERE site_id = ?");
+        $stmt->execute([$siteId]);
+        if ($stmt->fetchColumn() === 0) {
+            createDefaultLanguageSettings($pdo, $siteId);
+        }
+        
+        // 有効な言語設定を取得
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ? AND is_enabled = 1");
+        $stmt->execute([$siteId]);
+        $enabledLanguages = $stmt->fetchAll();
+        
+        if (empty($enabledLanguages)) {
+            return ['success' => false, 'error' => 'No languages enabled for translation. Please enable languages in the multilingual settings first.'];
+        }
+        
+        // 日本語の記事を取得（コンテンツが作成済みの記事のみ）
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? AND status IN ('draft', 'generated') AND content IS NOT NULL AND content != ''");
+        $stmt->execute([$siteId]);
+        $articles = $stmt->fetchAll();
+        
+        if (empty($articles)) {
+            return ['success' => false, 'error' => 'No articles with content found for translation. Please create full Japanese articles first.'];
+        }
+        
+        $aiService = new AIService();
+        $translatedCount = 0;
+        $totalTasks = 0;
+        
+        // 総タスク数を計算
+        foreach ($articles as $article) {
+            foreach ($enabledLanguages as $language) {
+                // 既に翻訳済みかチェック
+                $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+                $stmt->execute([$article['id'], $language['language_code']]);
+                if (!$stmt->fetch()) {
+                    $totalTasks++;
+                }
+            }
+        }
+        
+        // 進捗を初期化
+        updateTranslationProgress($progressId, 0, $totalTasks, '準備完了', '');
+        
+        $currentTask = 0;
+        
+        foreach ($articles as $article) {
+            foreach ($enabledLanguages as $language) {
+                // 既に翻訳済みかチェック
+                $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+                $stmt->execute([$article['id'], $language['language_code']]);
+                if ($stmt->fetch()) {
+                    continue;
+                }
+                
+                $currentTask++;
+                
+                // 言語名を取得
+                $languageName = getLanguageName($language['language_code']);
+                
+                // 進捗を更新
+                updateTranslationProgress($progressId, $currentTask, $totalTasks, $article['title'], $languageName);
+                
+                error_log("Progress: {$currentTask}/{$totalTasks} - 記事「{$article['title']}」を{$languageName}に翻訳中");
+                
+                // 翻訳プロンプトを作成（強化版を使用）
+                $translationPrompt = createEnhancedTranslationPrompt($article, $language['language_code'], $languageName);
+                
+                $startTime = microtime(true);
+                $translatedContent = $aiService->generateText($translationPrompt, $aiModel);
+                $processingTime = microtime(true) - $startTime;
+                
+                // 翻訳結果をパース（改善版を使用）
+                $translatedArticle = parseTranslatedArticleEnhanced($translatedContent);
+                
+                // デバッグログ
+                error_log("翻訳結果 - タイトル: " . $translatedArticle['title'] . ", コンテンツ長: " . strlen($translatedArticle['content']));
+                
+                // 多言語記事を保存
+                $stmt = $pdo->prepare("INSERT INTO multilingual_articles (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'generated')");
+                $stmt->execute([
+                    $article['id'],
+                    $language['language_code'],
+                    $translatedArticle['title'],
+                    $translatedArticle['keywords'],
+                    $translatedArticle['summary'],
+                    $translatedArticle['content'],
+                    $aiModel
+                ]);
+                
+                // AI使用ログを記録
+                logAiUsage($siteId, $article['id'], $aiModel, 'multilingual_translation', $translationPrompt, $translatedContent, $processingTime);
+                
+                $translatedCount++;
+            }
+        }
+        
+        // 完了時の進捗更新
+        updateTranslationProgress($progressId, $totalTasks, $totalTasks, '完了', '');
+        
+        return ['success' => true, 'translated_count' => $translatedCount, 'progress_id' => $progressId];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function getLanguageName($languageCode) {
+    $languageNames = [
+        'en' => 'English',
+        'zh-CN' => '中文（简体）',
+        'zh-TW' => '中文（繁體）',
+        'ko' => '한국어',
+        'es' => 'Español',
+        'ar' => 'العربية',
+        'pt' => 'Português',
+        'fr' => 'Français',
+        'de' => 'Deutsch',
+        'ru' => 'Русский',
+        'it' => 'Italiano'
+    ];
+    
+    return $languageNames[$languageCode] ?? $languageCode;
+}
+
+function createImprovedTranslationPrompt($article, $languageCode, $languageName) {
+    $prompt = "あなたは専門的な翻訳者として、以下の日本語記事を{$languageName}に翻訳してください。\n\n";
+    $prompt .= "【重要な要件】\n";
+    $prompt .= "- 原文の長さと詳細度を完全に保持してください\n";
+    $prompt .= "- 記事の構造、段落分け、情報量を元の通りに維持してください\n";
+    $prompt .= "- 要約や短縮は絶対に行わないでください\n";
+    $prompt .= "- すべての情報を漏れなく翻訳してください\n\n";
+    
+    $prompt .= "【翻訳対象の記事情報】\n";
+    $prompt .= "タイトル: " . $article['title'] . "\n";
+    $prompt .= "SEOキーワード: " . $article['seo_keywords'] . "\n";
+    $prompt .= "概要: " . $article['summary'] . "\n\n";
+    $prompt .= "記事本文:\n" . $article['content'] . "\n\n";
+    
+    $prompt .= "【翻訳の詳細要件】\n";
+    $prompt .= "1. 原文の意味と文脈を100%保持する\n";
+    $prompt .= "2. {$languageName}の自然で読みやすい表現を使用する\n";
+    $prompt .= "3. 専門用語は適切に翻訳し、必要に応じて説明を追加する\n";
+    $prompt .= "4. マークダウン形式、リスト、段落構造を維持する\n";
+    $prompt .= "5. 文化的な文脈を考慮し、読者に分かりやすくする\n";
+    $prompt .= "6. SEOキーワードも適切に翻訳する\n";
+    $prompt .= "7. 記事の長さは原文と同等かそれ以上にする\n\n";
+    
+    if ($languageCode === 'zh-CN') {
+        $prompt .= "【中文简体特別要件】\n";
+        $prompt .= "- 簡体字を使用し、大陸での一般的な表現を採用する\n";
+        $prompt .= "- 日本の固有名詞は適切に中国語に翻訳する\n";
+        $prompt .= "- 記事の詳細度を保ち、すべての段落を完全に翻訳する\n\n";
+    }
+    
+    $prompt .= "【出力形式】\n";
+    $prompt .= "以下の形式で、各項目を完全に翻訳して出力してください：\n\n";
+    $prompt .= "タイトル: [翻訳されたタイトル]\n";
+    $prompt .= "キーワード: [翻訳されたSEOキーワード（カンマ区切り）]\n";
+    $prompt .= "概要: [翻訳された概要]\n";
+    $prompt .= "記事内容: [翻訳された記事内容（原文と同等の長さと詳細度を保持）]\n";
+    
+    return $prompt;
+}
+
+function updateTranslationProgress($progressId, $current, $total, $articleTitle, $language) {
+    $progressFile = sys_get_temp_dir() . "/translation_progress_{$progressId}.json";
+    $progressData = [
+        'current' => $current,
+        'total' => $total,
+        'article_title' => $articleTitle,
+        'language' => $language,
+        'timestamp' => time()
+    ];
+    file_put_contents($progressFile, json_encode($progressData));
+}
+
+function getTranslationProgress($progressId) {
+    $progressFile = sys_get_temp_dir() . "/translation_progress_{$progressId}.json";
+    
+    if (!file_exists($progressFile)) {
+        return ['success' => false, 'error' => 'Progress not found'];
+    }
+    
+    $progressData = json_decode(file_get_contents($progressFile), true);
+    if (!$progressData) {
+        return ['success' => false, 'error' => 'Invalid progress data'];
+    }
+    
+    // 5分以上古いファイルは削除
+    if (time() - $progressData['timestamp'] > 300) {
+        unlink($progressFile);
+        return ['success' => false, 'error' => 'Progress expired'];
+    }
+    
+    return ['success' => true, 'progress' => $progressData];
+}
+
+function createEnhancedTranslationPrompt($article, $languageCode, $languageName) {
+    $prompt = "# 専門翻訳タスク\n\n";
+    $prompt .= "あなたは多言語コンテンツの専門翻訳者です。以下の日本語記事を{$languageName}に翻訳してください。\n\n";
+    
+    $prompt .= "## 【CRITICAL REQUIREMENTS - 絶対遵守事項】\n";
+    $prompt .= "1. **完全性**: 原文のすべての情報を漏れなく翻訳する\n";
+    $prompt .= "2. **長さ保持**: 原文と同等またはそれ以上の詳細度を維持する\n";
+    $prompt .= "3. **構造保持**: 段落、見出し、リスト構造を完全に保持する\n";
+    $prompt .= "4. **要約禁止**: 内容の省略、要約、短縮は絶対に行わない\n";
+    $prompt .= "5. **品質**: 自然で読みやすい{$languageName}表現を使用する\n\n";
+    
+    $prompt .= "## 翻訳対象記事\n\n";
+    $prompt .= "**タイトル**: " . $article['title'] . "\n";
+    $prompt .= "**SEOキーワード**: " . $article['seo_keywords'] . "\n";
+    $prompt .= "**概要**: " . $article['summary'] . "\n\n";
+    $prompt .= "**記事本文**:\n```\n" . $article['content'] . "\n```\n\n";
+    
+    // 言語別の特別指示
+    if ($languageCode === 'zh-CN') {
+        $prompt .= "## 中文简体特別指示\n";
+        $prompt .= "- 使用标准简体中文\n";
+        $prompt .= "- 保持文章的完整性和详细程度\n";
+        $prompt .= "- 确保每个段落都被完整翻译\n";
+        $prompt .= "- 专业术语使用准确的中文表达\n\n";
+    } elseif ($languageCode === 'fr') {
+        $prompt .= "## Instructions spéciales pour le français\n";
+        $prompt .= "- Utilisez un français naturel et fluide\n";
+        $prompt .= "- Maintenez la structure complète de l'article\n";
+        $prompt .= "- Traduisez intégralement chaque paragraphe\n";
+        $prompt .= "- Adaptez les expressions culturelles au contexte français\n\n";
+    }
+    
+    $prompt .= "## 詳細要件\n";
+    $prompt .= "- マークダウン形式を維持\n";
+    $prompt .= "- 専門用語は適切に翻訳\n";
+    $prompt .= "- 文化的文脈を考慮\n";
+    $prompt .= "- SEOキーワードも翻訳\n";
+    $prompt .= "- 読者にとって価値ある内容を保持\n\n";
+    
+    $prompt .= "## 出力形式（厳密に従ってください）\n\n";
+    $prompt .= "タイトル: [完全に翻訳されたタイトル]\n\n";
+    $prompt .= "キーワード: [翻訳されたSEOキーワード（カンマ区切り）]\n\n";
+    $prompt .= "概要: [完全に翻訳された概要]\n\n";
+    $prompt .= "記事内容:\n[原文と同等の長さと詳細度を持つ完全な翻訳記事]\n\n";
+    
+    $prompt .= "**重要**: 記事内容セクションでは、原文のすべての段落、情報、構造を漏れなく翻訳してください。\n";
+    
+    return $prompt;
+}
+
+function parseTranslatedArticleEnhanced($translatedContent) {
+    $article = [
+        'title' => '',
+        'keywords' => '',
+        'summary' => '',
+        'content' => ''
+    ];
+    
+    // デバッグログ
+    error_log("翻訳結果の解析開始 - 文字数: " . strlen($translatedContent));
+    
+    // より柔軟なパターンマッチング
+    $patterns = [
+        'title' => '/(?:タイトル|Title|标题)[:：]\s*(.+?)(?=\n|\r|$)/u',
+        'keywords' => '/(?:キーワード|Keywords|关键词)[:：]\s*(.+?)(?=\n|\r|$)/u',
+        'summary' => '/(?:概要|Summary|摘要)[:：]\s*(.+?)(?=\n(?:記事内容|Article|文章内容|Content)|\r|$)/su',
+        'content' => '/(?:記事内容|Article|文章内容|Content)[:：]\s*(.+?)$/su'
+    ];
+    
+    foreach ($patterns as $key => $pattern) {
+        if (preg_match($pattern, $translatedContent, $matches)) {
+            $article[$key] = trim($matches[1]);
+            error_log("パース成功 - {$key}: " . strlen($article[$key]) . "文字");
+        } else {
+            error_log("パース失敗 - {$key}");
+        }
+    }
+    
+    // フォールバック: 記事内容が見つからない場合
+    if (empty($article['content'])) {
+        // より単純なパターンで再試行
+        $lines = explode("\n", $translatedContent);
+        $contentStarted = false;
+        $contentLines = [];
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            if (!$contentStarted) {
+                if (strpos($line, 'タイトル:') === 0 && empty($article['title'])) {
+                    $article['title'] = trim(str_replace('タイトル:', '', $line));
+                } elseif (strpos($line, 'キーワード:') === 0 && empty($article['keywords'])) {
+                    $article['keywords'] = trim(str_replace('キーワード:', '', $line));
+                } elseif (strpos($line, '概要:') === 0 && empty($article['summary'])) {
+                    $article['summary'] = trim(str_replace('概要:', '', $line));
+                } elseif (strpos($line, '記事内容:') === 0) {
+                    $contentStarted = true;
+                    $remainingContent = trim(str_replace('記事内容:', '', $line));
+                    if (!empty($remainingContent)) {
+                        $contentLines[] = $remainingContent;
+                    }
+                }
+            } else {
+                if (!empty($line)) {
+                    $contentLines[] = $line;
+                }
+            }
+        }
+        
+        if (!empty($contentLines)) {
+            $article['content'] = implode("\n", $contentLines);
+        }
+    }
+    
+    // 最終的なコンテンツチェック
+    if (empty($article['content'])) {
+        error_log("警告: 記事内容が空です。生の翻訳結果: " . substr($translatedContent, 0, 500));
+        // 最後の手段として、翻訳結果全体を使用
+        $article['content'] = $translatedContent;
+    }
+    
+    error_log("最終結果 - タイトル: {$article['title']}, コンテンツ長: " . strlen($article['content']));
+    
+    return $article;
+}
+
+function getArticles($siteId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        error_log("getArticles: サイトID $siteId の記事を取得中");
+        
+        // 記事を取得
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$siteId]);
+        $articles = $stmt->fetchAll();
+        
+        error_log("getArticles: " . count($articles) . "件の記事を取得");
+        
+        // 各記事のcontentの状態をログ出力
+        foreach ($articles as $article) {
+            error_log("getArticles: 記事ID=" . $article['id'] . 
+                     ", タイトル=" . $article['title'] . 
+                     ", ステータス=" . $article['status'] . 
+                     ", contentあり=" . (!empty($article['content']) ? 'YES' : 'NO') . 
+                     ", content長=" . (isset($article['content']) ? strlen($article['content']) : 0));
+        }
+        
+        return ['success' => true, 'articles' => $articles];
+    } catch (PDOException $e) {
+        error_log("getArticles: データベースエラー - " . $e->getMessage());
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        error_log("getArticles: エラー - " . $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function getArticleTranslations($articleId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // オリジナル記事を取得
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE id = ?");
+        $stmt->execute([$articleId]);
+        $originalArticle = $stmt->fetch();
+        
+        if (!$originalArticle) {
+            return ['success' => false, 'error' => 'Article not found'];
+        }
+        
+        // 翻訳記事を取得
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_articles WHERE original_article_id = ?");
+        $stmt->execute([$articleId]);
+        $translations = $stmt->fetchAll();
+        
+        return [
+            'success' => true,
+            'original' => $originalArticle,
+            'translations' => $translations
+        ];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function createTranslationPrompt($article, $languageCode, $languageName) {
+    $prompt = "以下の日本語記事を{$languageName}に翻訳してください。\n\n";
+    $prompt .= "元のタイトル: " . $article['title'] . "\n";
+    $prompt .= "元のSEOキーワード: " . $article['seo_keywords'] . "\n";
+    $prompt .= "元の概要: " . $article['summary'] . "\n";
+    
+    if (!empty($article['content'])) {
+        $prompt .= "元の記事内容: " . $article['content'] . "\n\n";
+    } else {
+        $prompt .= "元の記事内容: （記事内容は概要のみとなります）\n\n";
+    }
+    
+    $prompt .= "翻訳の要件：\n";
+    $prompt .= "- 原文の意味と構造を保持する\n";
+    $prompt .= "- {$languageName}の自然な表現を使用する\n";
+    $prompt .= "- SEOキーワードも適切に翻訳する\n";
+    $prompt .= "- マークダウン形式を維持する\n";
+    $prompt .= "- 文化的な文脈を考慮する\n";
+    
+    if (empty($article['content'])) {
+        $prompt .= "- 記事内容がない場合は概要を基に適切な内容を作成する\n";
+    }
+    
+    $prompt .= "\n以下の形式で出力してください：\n\n";
+    $prompt .= "タイトル: [翻訳されたタイトル]\n";
+    $prompt .= "キーワード: [翻訳されたSEOキーワード（カンマ区切り）]\n";
+    $prompt .= "概要: [翻訳された概要]\n";
+    $prompt .= "記事内容: [翻訳された記事内容]\n";
+    
+    return $prompt;
+}
+
+function parseTranslatedArticle($translatedContent) {
+    $article = [
+        'title' => '',
+        'keywords' => '',
+        'summary' => '',
+        'content' => ''
+    ];
+    
+    $lines = explode("\n", $translatedContent);
+    $currentSection = '';
+    $contentLines = [];
+    
+    foreach ($lines as $line) {
+        $line = trim($line);
+        
+        if (strpos($line, 'タイトル:') === 0) {
+            $article['title'] = trim(str_replace('タイトル:', '', $line));
+        } elseif (strpos($line, 'キーワード:') === 0) {
+            $article['keywords'] = trim(str_replace('キーワード:', '', $line));
+        } elseif (strpos($line, '概要:') === 0) {
+            $article['summary'] = trim(str_replace('概要:', '', $line));
+        } elseif (strpos($line, '記事内容:') === 0) {
+            $currentSection = 'content';
+            continue;
+        } elseif ($currentSection === 'content') {
+            $contentLines[] = $line;
+        }
+    }
+    
+    $article['content'] = implode("\n", $contentLines);
+    
+    return $article;
+}
+
+// 多言語テーブル作成関数
+function createMultilingualTables($pdo) {
+    // 多言語記事テーブル
+    $pdo->exec("CREATE TABLE multilingual_articles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        original_article_id INT NOT NULL,
+        language_code VARCHAR(10) NOT NULL,
+        title VARCHAR(500) NOT NULL,
+        seo_keywords TEXT,
+        summary TEXT,
+        content LONGTEXT,
+        ai_model VARCHAR(50),
+        status ENUM('draft', 'generated', 'published') DEFAULT 'draft',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (original_article_id) REFERENCES articles(id) ON DELETE CASCADE,
+        INDEX idx_multilingual_articles_original_id (original_article_id),
+        INDEX idx_multilingual_articles_language (language_code),
+        INDEX idx_multilingual_articles_status (status)
+    )");
+    
+    // 多言語設定テーブル
+    $pdo->exec("CREATE TABLE multilingual_settings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        site_id INT NOT NULL,
+        language_code VARCHAR(10) NOT NULL,
+        language_name VARCHAR(50) NOT NULL,
+        is_enabled BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_site_language (site_id, language_code),
+        INDEX idx_multilingual_settings_site_id (site_id),
+        INDEX idx_multilingual_settings_enabled (is_enabled)
+    )");
+    
+    // ai_usage_logs テーブルに multilingual_translation を追加
+    $pdo->exec("ALTER TABLE ai_usage_logs MODIFY COLUMN usage_type ENUM('site_analysis', 'article_outline', 'article_generation', 'additional_outline', 'site_analysis_integration', 'multilingual_translation') NOT NULL");
+}
+
+// デフォルト言語設定作成関数
+function createDefaultLanguageSettings($pdo, $siteId) {
+    $languages = [
+        ['en', 'English'],
+        ['zh-CN', '中文（简体）'],
+        ['zh-TW', '中文（繁體）'],
+        ['ko', '한국어'],
+        ['es', 'Español'],
+        ['ar', 'العربية'],
+        ['pt', 'Português'],
+        ['fr', 'Français'],
+        ['de', 'Deutsch'],
+        ['ru', 'Русский'],
+        ['it', 'Italiano']
+    ];
+    
+    $stmt = $pdo->prepare("INSERT INTO multilingual_settings (site_id, language_code, language_name, is_enabled) VALUES (?, ?, ?, FALSE)");
+    
+    foreach ($languages as $lang) {
+        $stmt->execute([$siteId, $lang[0], $lang[1]]);
     }
 }
 ?>
