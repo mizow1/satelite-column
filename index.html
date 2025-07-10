@@ -31,11 +31,17 @@
         
 
         <div class="input-section">
-            <h2>参考URL入力</h2>
+            <h2>サイト分析・記事作成設定</h2>
+            
+            <div class="site-description-section">
+                <label for="site-description-input">記事作成方針（任意）:</label>
+                <textarea id="site-description-input" placeholder="どんなサイトか、どんな記事を作りたいかを自由入力してください。参考URLと併用可能です。" rows="4" class="site-description-input"></textarea>
+            </div>
             
             <div class="url-analysis-section">
+                <label for="base-url-input">参考URL（任意）:</label>
                 <div class="url-input-group">
-                    <input type="url" id="base-url-input" placeholder="サイトのベースURLを入力" class="url-input">
+                    <input type="url" id="base-url-input" placeholder="参考にするサイトのベースURLを入力" class="url-input">
                     <button type="button" id="crawl-urls">関連URL取得</button>
                 </div>
                 
@@ -57,7 +63,7 @@
                 <div id="url-list"></div>
             </div>
             
-            <button type="button" id="analyze-sites" style="display: none;">記事作成方針作成</button>
+            <button type="button" id="analyze-sites">記事作成方針作成</button>
         </div>
 
         <div class="analysis-section" id="analysis-section" style="display: none;">
@@ -171,10 +177,16 @@
             </div>
 
             <div class="outline-controls">
-                <button type="button" id="generate-all-articles">全記事一括作成</button>
-                <button type="button" id="generate-multilingual-articles">多言語記事生成</button>
-                <button type="button" id="export-csv">CSV出力</button>
-                <button type="button" id="show-ai-logs">AI使用ログ</button>
+                <div class="selection-controls">
+                    <button type="button" id="select-all-articles">全選択</button>
+                    <button type="button" id="deselect-all-articles">全解除</button>
+                    <button type="button" id="generate-selected-articles">選択記事生成</button>
+                    <button type="button" id="delete-selected-articles">選択記事削除</button>
+                </div>
+                <div class="other-controls">
+                    <button type="button" id="export-csv">CSV出力</button>
+                    <button type="button" id="show-ai-logs">AI使用ログ</button>
+                </div>
             </div>
 
             <div id="article-outline-table"></div>

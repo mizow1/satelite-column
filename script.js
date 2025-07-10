@@ -248,6 +248,9 @@ class SatelliteColumnSystem {
         this.articleDetailModal = document.getElementById('article-detail-modal');
         this.loadingOverlay = document.getElementById('loading-overlay');
         
+        // サイト分析関連の要素
+        this.siteDescriptionInput = document.getElementById('site-description-input');
+        
         // 新しいURL解析関連の要素
         this.baseUrlInput = document.getElementById('base-url-input');
         this.crawlUrlsBtn = document.getElementById('crawl-urls');
@@ -259,6 +262,12 @@ class SatelliteColumnSystem {
         this.addManualUrlBtn = document.getElementById('add-manual-url');
         this.selectAllUrlsBtn = document.getElementById('select-all-urls');
         this.deselectAllUrlsBtn = document.getElementById('deselect-all-urls');
+        
+        // 記事選択関連の要素
+        this.selectAllArticlesBtn = document.getElementById('select-all-articles');
+        this.deselectAllArticlesBtn = document.getElementById('deselect-all-articles');
+        this.generateSelectedArticlesBtn = document.getElementById('generate-selected-articles');
+        this.deleteSelectedArticlesBtn = document.getElementById('delete-selected-articles');
         
         // AI使用ログ関連の要素
         this.showAiLogsBtn = document.getElementById('show-ai-logs');
@@ -283,13 +292,14 @@ class SatelliteColumnSystem {
         // 基本的なイベント
         if (this.analyzeSitesBtn) this.analyzeSitesBtn.addEventListener('click', () => this.analyzeSites());
         if (this.createArticleOutlineBtn) this.createArticleOutlineBtn.addEventListener('click', () => this.createArticleOutline());
-        if (this.generateAllArticlesBtn) this.generateAllArticlesBtn.addEventListener('click', () => this.showLanguageSelectionModal('generate-all'));
         if (this.exportCsvBtn) this.exportCsvBtn.addEventListener('click', () => this.exportCsv());
-        
-        // 多言語記事生成ボタンのイベント
-        const generateMultilingualArticlesBtn = document.getElementById('generate-multilingual-articles');
-        if (generateMultilingualArticlesBtn) generateMultilingualArticlesBtn.addEventListener('click', () => this.showLanguageSelectionModal('generate-multilingual'));
         if (this.siteSelect) this.siteSelect.addEventListener('change', (e) => this.loadSiteData(e.target.value));
+        
+        // 記事選択関連のイベント
+        if (this.selectAllArticlesBtn) this.selectAllArticlesBtn.addEventListener('click', () => this.selectAllArticles());
+        if (this.deselectAllArticlesBtn) this.deselectAllArticlesBtn.addEventListener('click', () => this.deselectAllArticles());
+        if (this.generateSelectedArticlesBtn) this.generateSelectedArticlesBtn.addEventListener('click', () => this.generateSelectedArticles());
+        if (this.deleteSelectedArticlesBtn) this.deleteSelectedArticlesBtn.addEventListener('click', () => this.deleteSelectedArticles());
         
         // 新しいURL解析関連のイベント
         if (this.crawlUrlsBtn) this.crawlUrlsBtn.addEventListener('click', () => this.crawlSiteUrls());
@@ -552,8 +562,11 @@ class SatelliteColumnSystem {
 
     async analyzeSites() {
         const urls = this.getSelectedUrls();
-        if (urls.length === 0) {
-            this.showErrorMessage('少なくとも1つのURLを選択してください。');
+        const siteDescription = this.siteDescriptionInput.value.trim();
+        
+        // URLかサイト説明のどちらかが入力されていることを確認
+        if (urls.length === 0 && !siteDescription) {
+            this.showErrorMessage('参考URLを選択するか、記事作成方針を入力してください。');
             return;
         }
 
@@ -584,6 +597,7 @@ class SatelliteColumnSystem {
                 const requestData = {
                     action: 'analyze_sites_group',
                     urls: group,
+                    site_description: siteDescription,
                     ai_model: this.aiModelSelect.value,
                     group_index: i + 1,
                     total_groups: urlGroups.length
@@ -625,9 +639,10 @@ class SatelliteColumnSystem {
             const finalRequestData = {
                 action: 'integrate_analyses',
                 analyses: groupAnalyses,
+                site_description: siteDescription,
                 ai_model: this.aiModelSelect.value,
                 total_urls: urls.length,
-                base_url: urls[0] // 最初のURLをベースURLとして渡す
+                base_url: urls.length > 0 ? urls[0] : null // URLがある場合のみベースURLを設定
             };
             
             const response = await fetch('api.php', {
@@ -682,7 +697,8 @@ class SatelliteColumnSystem {
                 body: JSON.stringify({
                     action: 'add_article_outline',
                     site_id: this.currentSiteId,
-                    ai_model: this.aiModelSelect.value
+                    ai_model: this.aiModelSelect.value,
+                    check_duplicates: true
                 })
             });
             const result = await this.handleApiResponse(response);
@@ -708,23 +724,32 @@ class SatelliteColumnSystem {
             <table class="article-table">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="select-all-header" onchange="window.satelliteSystem.toggleAllArticles(this.checked)"></th>
                         <th>記事タイトル</th>
                         <th>SEOキーワード</th>
                         <th>概要</th>
                         <th>投稿日時</th>
                         <th>多言語記事</th>
+                        <th>操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${this.articles.map(article => `
                         <tr>
                             <td>
+                                <input type="checkbox" class="article-checkbox" data-article-id="${article.id}">
+                            </td>
+                            <td>
                                 ${article.status === 'generated' ? 
                                     `<a href="#" class="article-link" data-article-id="${article.id}">${article.title}</a>` : 
-                                    article.title}
+                                    `<input type="text" class="editable-title" data-article-id="${article.id}" value="${article.title}" onblur="window.satelliteSystem.updateArticleField(${article.id}, 'title', this.value)">`}
                             </td>
-                            <td>${article.seo_keywords}</td>
-                            <td>${article.summary}</td>
+                            <td>
+                                <input type="text" class="editable-keywords" data-article-id="${article.id}" value="${article.seo_keywords}" onblur="window.satelliteSystem.updateArticleField(${article.id}, 'seo_keywords', this.value)">
+                            </td>
+                            <td>
+                                <textarea class="editable-summary" data-article-id="${article.id}" onblur="window.satelliteSystem.updateArticleField(${article.id}, 'summary', this.value)">${article.summary}</textarea>
+                            </td>
                             <td>
                                 <input type="datetime-local" 
                                        class="publish-date-input" 
@@ -734,6 +759,13 @@ class SatelliteColumnSystem {
                             </td>
                             <td class="language-icons">
                                 ${this.generateLanguageIcons(article)}
+                            </td>
+                            <td class="article-actions">
+                                ${article.status === 'generated' ? 
+                                    `<button class="btn-edit-content" data-article-id="${article.id}">編集</button>
+                                     <button class="btn-regenerate" data-article-id="${article.id}">作り直し</button>
+                                     <button class="btn-delete-single" data-article-id="${article.id}">削除</button>` : 
+                                    `<button class="btn-delete-single" data-article-id="${article.id}">削除</button>`}
                             </td>
                         </tr>
                     `).join('')}
@@ -756,6 +788,15 @@ class SatelliteColumnSystem {
                 const languageCode = e.target.dataset.language;
                 const articleId = e.target.dataset.articleId;
                 this.handleLanguageIconClick(articleId, languageCode);
+            } else if (e.target.classList.contains('btn-edit-content')) {
+                const articleId = e.target.dataset.articleId;
+                this.editArticleContent(articleId);
+            } else if (e.target.classList.contains('btn-regenerate')) {
+                const articleId = e.target.dataset.articleId;
+                this.regenerateArticle(articleId);
+            } else if (e.target.classList.contains('btn-delete-single')) {
+                const articleId = e.target.dataset.articleId;
+                this.deleteArticle(articleId);
             }
         });
     }
@@ -2118,6 +2159,395 @@ class SatelliteColumnSystem {
         }
 
         await this.generateMultilingualArticles(filteredLanguages);
+    }
+
+    // 記事選択関連のメソッド
+    selectAllArticles() {
+        const checkboxes = document.querySelectorAll('.article-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        document.getElementById('select-all-header').checked = true;
+    }
+
+    deselectAllArticles() {
+        const checkboxes = document.querySelectorAll('.article-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        document.getElementById('select-all-header').checked = false;
+    }
+
+    toggleAllArticles(checked) {
+        const checkboxes = document.querySelectorAll('.article-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+    }
+
+    getSelectedArticleIds() {
+        const checkboxes = document.querySelectorAll('.article-checkbox:checked');
+        return Array.from(checkboxes).map(checkbox => checkbox.dataset.articleId);
+    }
+
+    // 選択記事生成
+    async generateSelectedArticles() {
+        const selectedIds = this.getSelectedArticleIds();
+        if (selectedIds.length === 0) {
+            this.showErrorMessage('記事を選択してください。');
+            return;
+        }
+
+        // 言語選択モーダルを表示
+        this.showLanguageSelectionModalForSelected(selectedIds);
+    }
+
+    // 選択記事削除
+    async deleteSelectedArticles() {
+        const selectedIds = this.getSelectedArticleIds();
+        if (selectedIds.length === 0) {
+            this.showErrorMessage('削除する記事を選択してください。');
+            return;
+        }
+
+        if (!confirm(`選択した${selectedIds.length}件の記事を削除しますか？この操作は取り消せません。`)) {
+            return;
+        }
+
+        this.showLoading();
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'delete_articles',
+                    article_ids: selectedIds
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.showSuccessMessage(`${selectedIds.length}件の記事を削除しました。`);
+                await this.loadSiteData(this.currentSiteId);
+            } else {
+                this.showErrorMessage('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('記事削除エラー:', error);
+            this.showErrorMessage('記事削除中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    // 記事フィールド更新
+    async updateArticleField(articleId, field, value) {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_article_field',
+                    article_id: articleId,
+                    field: field,
+                    value: value
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                // 記事データを更新
+                const articleIndex = this.articles.findIndex(a => a.id == articleId);
+                if (articleIndex !== -1) {
+                    this.articles[articleIndex][field] = value;
+                }
+                console.log(`記事${articleId}の${field}を更新しました`);
+            } else {
+                this.showErrorMessage('フィールドの更新に失敗しました: ' + result.error);
+            }
+        } catch (error) {
+            console.error('フィールド更新エラー:', error);
+            this.showErrorMessage('フィールドの更新中にエラーが発生しました。');
+        }
+    }
+
+    // 記事コンテンツ編集
+    async editArticleContent(articleId) {
+        const article = this.articles.find(a => a.id == articleId);
+        if (!article) {
+            this.showErrorMessage('記事が見つかりません。');
+            return;
+        }
+
+        // 編集用モーダルを表示
+        this.showArticleEditModal(article);
+    }
+
+    // 記事作り直し
+    async regenerateArticle(articleId) {
+        if (!confirm('この記事を作り直しますか？現在の内容は失われます。')) {
+            return;
+        }
+
+        await this.generateArticle(articleId);
+    }
+
+    // 単一記事削除
+    async deleteArticle(articleId) {
+        if (!confirm('この記事を削除しますか？この操作は取り消せません。')) {
+            return;
+        }
+
+        this.showLoading();
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'delete_articles',
+                    article_ids: [articleId]
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.showSuccessMessage('記事を削除しました。');
+                await this.loadSiteData(this.currentSiteId);
+            } else {
+                this.showErrorMessage('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('記事削除エラー:', error);
+            this.showErrorMessage('記事削除中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    // 記事編集モーダル表示
+    showArticleEditModal(article) {
+        const modalHtml = `
+            <div id="article-edit-modal" class="modal" style="display: block;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>記事編集</h2>
+                        <span class="close" onclick="window.satelliteSystem.hideArticleEditModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="edit-field">
+                            <label for="edit-title">タイトル:</label>
+                            <input type="text" id="edit-title" value="${article.title}">
+                        </div>
+                        <div class="edit-field">
+                            <label for="edit-keywords">SEOキーワード:</label>
+                            <input type="text" id="edit-keywords" value="${article.seo_keywords}">
+                        </div>
+                        <div class="edit-field">
+                            <label for="edit-summary">概要:</label>
+                            <textarea id="edit-summary" rows="3">${article.summary}</textarea>
+                        </div>
+                        <div class="edit-field">
+                            <label for="edit-content">記事本文:</label>
+                            <textarea id="edit-content" rows="20">${article.content || ''}</textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="save-article-changes" class="btn btn-primary">保存</button>
+                        <button onclick="window.satelliteSystem.hideArticleEditModal()" class="btn btn-secondary">キャンセル</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // 保存ボタンのイベント
+        document.getElementById('save-article-changes').addEventListener('click', async () => {
+            const title = document.getElementById('edit-title').value;
+            const keywords = document.getElementById('edit-keywords').value;
+            const summary = document.getElementById('edit-summary').value;
+            const content = document.getElementById('edit-content').value;
+
+            await this.saveArticleChanges(article.id, {
+                title: title,
+                seo_keywords: keywords,
+                summary: summary,
+                content: content
+            });
+        });
+
+        // モーダルクリックで閉じる
+        document.getElementById('article-edit-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'article-edit-modal') {
+                this.hideArticleEditModal();
+            }
+        });
+    }
+
+    // 記事編集モーダル非表示
+    hideArticleEditModal() {
+        const modal = document.getElementById('article-edit-modal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    // 記事変更保存
+    async saveArticleChanges(articleId, changes) {
+        this.showLoading();
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_article_content',
+                    article_id: articleId,
+                    changes: changes
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.showSuccessMessage('記事を保存しました。');
+                this.hideArticleEditModal();
+                await this.loadSiteData(this.currentSiteId);
+            } else {
+                this.showErrorMessage('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('記事保存エラー:', error);
+            this.showErrorMessage('記事保存中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    // 選択記事用言語選択モーダル
+    showLanguageSelectionModalForSelected(selectedIds) {
+        const languages = [
+            { code: 'ja', name: '日本語', icon: '日' },
+            { code: 'en', name: 'English', icon: '英' },
+            { code: 'zh-CN', name: '中文（简体）', icon: '中' },
+            { code: 'zh-TW', name: '中文（繁體）', icon: '繁' },
+            { code: 'ko', name: '한국어', icon: '韓' },
+            { code: 'es', name: 'Español', icon: '西' },
+            { code: 'ar', name: 'العربية', icon: '阿' },
+            { code: 'pt', name: 'Português', icon: '葡' },
+            { code: 'fr', name: 'Français', icon: '仏' },
+            { code: 'de', name: 'Deutsch', icon: '独' },
+            { code: 'ru', name: 'Русский', icon: '露' },
+            { code: 'it', name: 'Italiano', icon: '伊' },
+            { code: 'hi', name: 'हिन्दी', icon: '印' }
+        ];
+
+        const modalHtml = `
+            <div id="selected-language-modal" class="modal" style="display: block;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>生成言語選択</h2>
+                        <span class="close" onclick="window.satelliteSystem.hideSelectedLanguageModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <p>選択した${selectedIds.length}件の記事を生成する言語を選択してください。</p>
+                        <div class="language-selection-controls">
+                            <button id="select-all-selected-languages" class="btn btn-secondary">全選択</button>
+                            <button id="deselect-all-selected-languages" class="btn btn-secondary">全解除</button>
+                        </div>
+                        <div class="language-grid">
+                            ${languages.map(lang => `
+                                <div class="language-item">
+                                    <input type="checkbox" 
+                                           id="selected-lang-${lang.code}" 
+                                           value="${lang.code}" 
+                                           ${lang.code === 'ja' ? 'checked' : ''}>
+                                    <label for="selected-lang-${lang.code}">
+                                        <span class="language-icon-modal">${lang.icon}</span>
+                                        <span class="language-name">${lang.name}</span>
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="confirm-selected-generation" class="btn btn-primary">記事生成開始</button>
+                        <button onclick="window.satelliteSystem.hideSelectedLanguageModal()" class="btn btn-secondary">キャンセル</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // イベントリスナーを追加
+        document.getElementById('select-all-selected-languages').addEventListener('click', () => {
+            document.querySelectorAll('#selected-language-modal input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        });
+
+        document.getElementById('deselect-all-selected-languages').addEventListener('click', () => {
+            document.querySelectorAll('#selected-language-modal input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        });
+
+        document.getElementById('confirm-selected-generation').addEventListener('click', () => {
+            const selectedLanguages = Array.from(document.querySelectorAll('#selected-language-modal input[type="checkbox"]:checked'))
+                .map(checkbox => checkbox.value);
+            
+            this.hideSelectedLanguageModal();
+            this.executeSelectedArticleGeneration(selectedIds, selectedLanguages);
+        });
+
+        // モーダルクリックで閉じる
+        document.getElementById('selected-language-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'selected-language-modal') {
+                this.hideSelectedLanguageModal();
+            }
+        });
+    }
+
+    // 選択記事用言語モーダル非表示
+    hideSelectedLanguageModal() {
+        const modal = document.getElementById('selected-language-modal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    // 選択記事の生成実行
+    async executeSelectedArticleGeneration(selectedIds, selectedLanguages) {
+        if (selectedLanguages.length === 0) {
+            this.showErrorMessage('言語を選択してください。');
+            return;
+        }
+
+        this.showLoading();
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'generate_selected_articles',
+                    article_ids: selectedIds,
+                    languages: selectedLanguages,
+                    ai_model: this.aiModelSelect.value
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.showSuccessMessage(`選択した記事の生成を開始しました。`);
+                await this.loadSiteData(this.currentSiteId);
+            } else {
+                this.showErrorMessage('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('選択記事生成エラー:', error);
+            this.showErrorMessage('記事生成中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
     }
 }
 
