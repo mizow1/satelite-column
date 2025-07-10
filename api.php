@@ -57,9 +57,7 @@ function sendJsonResponse($data) {
 }
 
 try {
-    // デバッグ用: リクエスト情報をログに記録
-    error_log("API Request: " . $_SERVER['REQUEST_METHOD'] . " " . $_SERVER['REQUEST_URI']);
-    error_log("Content-Type: " . ($_SERVER['CONTENT_TYPE'] ?? 'not set'));
+    // デバッグ用: リクエスト情報をログに記録（本番環境では無効化）
     
     // 必要なファイルをインクルード
     if (!file_exists('config.php')) {
@@ -71,9 +69,7 @@ try {
     
     define('INCLUDED_FROM_API', true);
     
-    // デバッグ用: ファイルの存在確認
-    error_log("API called. config.php exists: " . (file_exists('config.php') ? 'yes' : 'no'));
-    error_log("API called. ai_service.php exists: " . (file_exists('ai_service.php') ? 'yes' : 'no'));
+    // デバッグ用: ファイルの存在確認（本番環境では無効化）
     
     require_once 'config.php';
     require_once 'ai_service.php';
@@ -82,7 +78,6 @@ try {
     
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rawInput = file_get_contents('php://input');
-        error_log("Raw POST data: " . $rawInput);
         
         if (!empty($rawInput)) {
             $input = json_decode($rawInput, true);
@@ -90,13 +85,10 @@ try {
                 error_log("JSON decode error: " . json_last_error_msg());
                 sendJsonResponse(['success' => false, 'error' => 'Invalid JSON input: ' . json_last_error_msg()]);
             }
-            error_log("Decoded input: " . print_r($input, true));
         } else {
-            error_log("No POST data received");
             sendJsonResponse(['success' => false, 'error' => 'No input data received']);
         }
     } else {
-        error_log("Non-POST request method: " . $_SERVER['REQUEST_METHOD']);
         sendJsonResponse(['success' => false, 'error' => 'Only POST requests are supported']);
     }
     
@@ -398,11 +390,7 @@ function analyzeSitesGroup($urls, $aiModel, $groupIndex, $totalGroups) {
             }
         }
         
-        // ログ出力
-        error_log("Group {$groupIndex}: Processed " . count($siteContents) . " URLs successfully, " . count($failedUrls) . " failed");
-        if (!empty($failedUrls)) {
-            error_log("Failed URLs in group {$groupIndex}: " . implode(', ', $failedUrls));
-        }
+        // ログ出力（本番環境では無効化）
         
         // 有効なコンテンツが1つもない場合は空の分析結果を返す
         if (empty($siteContents)) {
@@ -1075,13 +1063,11 @@ function crawlSiteUrls($baseUrl) {
             // ページのHTMLを取得
             $html = fetchWebContent($currentUrl);
             if (!$html) {
-                error_log("Failed to fetch content from: " . $currentUrl);
                 continue;
             }
             
             // リンクを抽出（ベースURL以下の階層のみ）
             $links = extractLinksFromHtmlWithPathFilter($html, $currentUrl, $domain, $baseUrlPrefix);
-            error_log("Found " . count($links) . " links from: " . $currentUrl);
             
             foreach ($links as $link) {
                 if (!in_array($link, $foundUrls) && !in_array($link, $visitedUrls)) {
@@ -1404,18 +1390,15 @@ function updateMultilingualSettings($siteId, $settings) {
     try {
         $pdo = DatabaseConfig::getConnection();
         
-        error_log("updateMultilingualSettings called with siteId: $siteId, settings: " . json_encode($settings));
         
         // まず、該当するレコードが存在するかチェック
         $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM multilingual_settings WHERE site_id = ?");
         $checkStmt->execute([$siteId]);
         $recordCount = $checkStmt->fetchColumn();
         
-        error_log("Found $recordCount multilingual settings records for site $siteId");
         
         if ($recordCount === 0) {
             // レコードが存在しない場合は作成
-            error_log("Creating default multilingual settings for site $siteId");
             createDefaultLanguageSettings($pdo, $siteId);
         }
         
@@ -1423,15 +1406,12 @@ function updateMultilingualSettings($siteId, $settings) {
         
         foreach ($settings as $languageCode => $isEnabled) {
             $boolValue = $isEnabled ? 1 : 0;
-            error_log("Updating language $languageCode to $boolValue for site $siteId");
             
             $result = $stmt->execute([$boolValue, $siteId, $languageCode]);
             $affectedRows = $stmt->rowCount();
             
-            error_log("Update result: $result, affected rows: $affectedRows");
             
             if ($affectedRows === 0) {
-                error_log("No rows updated for language $languageCode, attempting to insert");
                 // 更新できなかった場合は挿入を試行
                 $insertStmt = $pdo->prepare("INSERT INTO multilingual_settings (site_id, language_code, language_name, is_enabled) VALUES (?, ?, ?, ?)");
                 $languageNames = [
@@ -1484,13 +1464,11 @@ function generateMultilingualArticles($siteId, $aiModel) {
         $stmt->execute([$siteId]);
         $enabledLanguages = $stmt->fetchAll();
         
-        error_log("generateMultilingualArticles: Found " . count($enabledLanguages) . " enabled languages for site $siteId");
         
         // デバッグ用：全ての言語設定を取得
         $debugStmt = $pdo->prepare("SELECT * FROM multilingual_settings WHERE site_id = ?");
         $debugStmt->execute([$siteId]);
         $allLanguages = $debugStmt->fetchAll();
-        error_log("generateMultilingualArticles: All languages for site $siteId: " . json_encode($allLanguages));
         
         if (empty($enabledLanguages)) {
             return ['success' => false, 'error' => 'No languages enabled for translation. Please enable languages in the multilingual settings first.'];
@@ -1664,7 +1642,6 @@ function startMultilingualArticleGeneration($siteId, $aiModel) {
 
 function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
     try {
-        error_log("executeMultilingualGeneration開始 - サイトID: {$siteId}, 進捗ID: {$progressId}");
         
         $pdo = DatabaseConfig::getConnection();
         
@@ -1673,14 +1650,12 @@ function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
         $stmt->execute([$siteId]);
         $enabledLanguages = $stmt->fetchAll();
         
-        error_log("有効言語数: " . count($enabledLanguages));
         
         // 日本語の記事を取得（コンテンツが作成済みの記事のみ）
         $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? AND status IN ('draft', 'generated') AND content IS NOT NULL AND content != ''");
         $stmt->execute([$siteId]);
         $articles = $stmt->fetchAll();
         
-        error_log("対象記事数: " . count($articles));
         
         $aiService = new AIService();
         $translatedCount = 0;
@@ -1698,7 +1673,6 @@ function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
             }
         }
         
-        error_log("翻訳タスク総数: {$totalTasks}");
         
         $currentTask = 0;
         
@@ -1717,7 +1691,6 @@ function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
                 $languageName = getLanguageName($language['language_code']);
                 
                 // 進捗を更新
-                error_log("進捗更新: {$currentTask}/{$totalTasks} - {$article['title']} -> {$languageName}");
                 updateTranslationProgress($progressId, $currentTask, $totalTasks, $article['title'], $languageName);
                 
                 // 翻訳プロンプトを作成（強化版を使用）
@@ -1731,7 +1704,6 @@ function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
                 $translatedArticle = parseTranslatedArticleEnhanced($translatedContent);
                 
                 // デバッグログ
-                error_log("翻訳結果 - タイトル: " . $translatedArticle['title'] . ", コンテンツ長: " . strlen($translatedArticle['content']));
                 
                 // 多言語記事を保存
                 $stmt = $pdo->prepare("INSERT INTO multilingual_articles (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'generated')");
@@ -1755,7 +1727,6 @@ function executeMultilingualGeneration($siteId, $aiModel, $progressId) {
         // 完了時の進捗更新
         updateTranslationProgress($progressId, $totalTasks, $totalTasks, '完了', "計{$translatedCount}件作成");
         
-        error_log("多言語記事生成完了: {$translatedCount}件");
         
         return ['success' => true, 'translated_count' => $translatedCount];
         
@@ -1842,7 +1813,6 @@ function generateMultilingualArticlesWithProgress($siteId, $aiModel) {
                 // 進捗を更新
                 updateTranslationProgress($progressId, $currentTask, $totalTasks, $article['title'], $languageName);
                 
-                error_log("Progress: {$currentTask}/{$totalTasks} - 記事「{$article['title']}」を{$languageName}に翻訳中");
                 
                 // 翻訳プロンプトを作成（強化版を使用）
                 $translationPrompt = createEnhancedTranslationPrompt($article, $language['language_code'], $languageName);
@@ -1855,7 +1825,6 @@ function generateMultilingualArticlesWithProgress($siteId, $aiModel) {
                 $translatedArticle = parseTranslatedArticleEnhanced($translatedContent);
                 
                 // デバッグログ
-                error_log("翻訳結果 - タイトル: " . $translatedArticle['title'] . ", コンテンツ長: " . strlen($translatedArticle['content']));
                 
                 // 多言語記事を保存
                 $stmt = $pdo->prepare("INSERT INTO multilingual_articles (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'generated')");
@@ -2036,8 +2005,6 @@ function parseTranslatedArticleEnhanced($translatedContent) {
         'content' => ''
     ];
     
-    // デバッグログ
-    error_log("翻訳結果の解析開始 - 文字数: " . strlen($translatedContent));
     
     // より柔軟なパターンマッチング
     $patterns = [
@@ -2050,9 +2017,7 @@ function parseTranslatedArticleEnhanced($translatedContent) {
     foreach ($patterns as $key => $pattern) {
         if (preg_match($pattern, $translatedContent, $matches)) {
             $article[$key] = trim($matches[1]);
-            error_log("パース成功 - {$key}: " . strlen($article[$key]) . "文字");
         } else {
-            error_log("パース失敗 - {$key}");
         }
     }
     
@@ -2094,12 +2059,10 @@ function parseTranslatedArticleEnhanced($translatedContent) {
     
     // 最終的なコンテンツチェック
     if (empty($article['content'])) {
-        error_log("警告: 記事内容が空です。生の翻訳結果: " . substr($translatedContent, 0, 500));
         // 最後の手段として、翻訳結果全体を使用
         $article['content'] = $translatedContent;
     }
     
-    error_log("最終結果 - タイトル: {$article['title']}, コンテンツ長: " . strlen($article['content']));
     
     return $article;
 }
@@ -2108,30 +2071,18 @@ function getArticles($siteId) {
     try {
         $pdo = DatabaseConfig::getConnection();
         
-        error_log("getArticles: サイトID $siteId の記事を取得中");
         
         // 記事を取得
         $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? ORDER BY created_at DESC");
         $stmt->execute([$siteId]);
         $articles = $stmt->fetchAll();
         
-        error_log("getArticles: " . count($articles) . "件の記事を取得");
         
-        // 各記事のcontentの状態をログ出力
-        foreach ($articles as $article) {
-            error_log("getArticles: 記事ID=" . $article['id'] . 
-                     ", タイトル=" . $article['title'] . 
-                     ", ステータス=" . $article['status'] . 
-                     ", contentあり=" . (!empty($article['content']) ? 'YES' : 'NO') . 
-                     ", content長=" . (isset($article['content']) ? strlen($article['content']) : 0));
-        }
         
         return ['success' => true, 'articles' => $articles];
     } catch (PDOException $e) {
-        error_log("getArticles: データベースエラー - " . $e->getMessage());
         return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
-        error_log("getArticles: エラー - " . $e->getMessage());
         return ['success' => false, 'error' => $e->getMessage()];
     }
 }

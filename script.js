@@ -52,7 +52,7 @@ class AutoGenerationManager {
 
     startAutoGeneration() {
         if (!window.satelliteSystem.currentSiteId) {
-            alert('まずサイト分析を実行してください。');
+            this.showErrorMessage('まずサイト分析を実行してください。');
             return;
         }
 
@@ -60,13 +60,13 @@ class AutoGenerationManager {
         const currentStatus = this.siteStatuses.get(siteId);
         
         if (currentStatus && currentStatus.isRunning) {
-            alert('このサイトは既に自動生成中です。');
+            this.showErrorMessage('このサイトは既に自動生成中です。');
             return;
         }
 
         const articleCount = parseInt(this.autoArticleCountInput.value);
         if (isNaN(articleCount) || articleCount < 1) {
-            alert('作成件数を正しく入力してください。');
+            this.showErrorMessage('作成件数を正しく入力してください。');
             return;
         }
 
@@ -154,7 +154,7 @@ class AutoGenerationManager {
     showError(siteId, message) {
         // 現在表示中のサイトのエラーのみ表示
         if (siteId === window.satelliteSystem.currentSiteId) {
-            alert('エラー: ' + message);
+            this.showErrorMessage('エラー: ' + message);
         }
         
         // サイトのステータスを更新
@@ -212,6 +212,14 @@ class AutoGenerationManager {
             this.siteWorkers.delete(siteId);
         }
         this.siteStatuses.delete(siteId);
+    }
+
+    // エラーメッセージを表示
+    showErrorMessage(message) {
+        console.error(message);
+        if (window.satelliteSystem && window.satelliteSystem.showErrorMessage) {
+            window.satelliteSystem.showErrorMessage(message);
+        }
     }
 }
 
@@ -448,7 +456,7 @@ class SatelliteColumnSystem {
     async crawlSiteUrls() {
         const baseUrl = this.baseUrlInput.value.trim();
         if (!baseUrl) {
-            alert('ベースURLを入力してください。');
+            this.showErrorMessage('ベースURLを入力してください。');
             return;
         }
 
@@ -476,11 +484,11 @@ class SatelliteColumnSystem {
                 this.urlListSection.style.display = 'block';
                 this.analyzeSitesBtn.style.display = 'block';
             } else {
-                alert('エラー: ' + result.error);
+                this.showErrorMessage('エラー: ' + result.error);
             }
         } catch (error) {
             console.error('URL取得エラー:', error);
-            alert('URL取得中にエラーが発生しました。');
+            this.showErrorMessage('URL取得中にエラーが発生しました。');
         } finally {
             this.crawlUrlsBtn.disabled = false;
             setTimeout(() => {
@@ -541,143 +549,11 @@ class SatelliteColumnSystem {
         return Array.from(checkboxes).map(checkbox => checkbox.dataset.url);
     }
 
-    // テスト用関数
-    async testGetRequest() {
-        try {
-            const response = await fetch('test_get.php?action=test');
-            const result = await response.json();
-            console.log('GET Test Result:', result);
-            alert('GET Test: ' + JSON.stringify(result));
-        } catch (error) {
-            console.error('GET Test Error:', error);
-            alert('GET Test Error: ' + error.message);
-        }
-    }
-    
-    async testPostRequest() {
-        try {
-            const response = await fetch('test_post.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'test', message: 'hello' })
-            });
-            const result = await response.json();
-            console.log('POST Test Result:', result);
-            alert('POST Test: ' + JSON.stringify(result));
-        } catch (error) {
-            console.error('POST Test Error:', error);
-            alert('POST Test Error: ' + error.message);
-        }
-    }
-    
-    async testAnalyzeSitesAction() {
-        try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'analyze_sites' })
-            });
-            const result = await response.json();
-            console.log('Analyze Sites Action Test Result:', result);
-            alert('Analyze Sites Action Test: ' + JSON.stringify(result));
-        } catch (error) {
-            console.error('Analyze Sites Action Test Error:', error);
-            alert('Analyze Sites Action Test Error: ' + error.message);
-        }
-    }
-    
-    async testWithUrls() {
-        try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    action: 'analyze_sites',
-                    urls: ['https://example.com'],
-                    ai_model: 'gemini-2.0-flash'
-                })
-            });
-            const result = await response.json();
-            console.log('With URLs Test Result:', result);
-            alert('With URLs Test: ' + JSON.stringify(result));
-        } catch (error) {
-            console.error('With URLs Test Error:', error);
-            alert('With URLs Test Error: ' + error.message);
-        }
-    }
-    
-    async testWithRealUrl() {
-        try {
-            let testUrls = this.getSelectedUrls();
-            
-            // 選択されたURLがない場合は、プロンプトで入力
-            if (testUrls.length === 0) {
-                const inputUrl = prompt('テスト用のURLを入力してください:');
-                if (!inputUrl || !inputUrl.trim()) {
-                    alert('URLが入力されませんでした');
-                    return;
-                }
-                testUrls = [inputUrl.trim()];
-            }
-            
-            console.log('Testing with URLs:', testUrls);
-            console.log('Data size:', JSON.stringify({ 
-                action: 'analyze_sites',
-                urls: testUrls,
-                ai_model: this.aiModelSelect.value
-            }).length);
-            
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    action: 'analyze_sites',
-                    urls: testUrls,
-                    ai_model: this.aiModelSelect.value
-                })
-            });
-            const result = await response.json();
-            console.log('Real URL Test Result:', result);
-            alert('Real URL Test: ' + JSON.stringify(result));
-        } catch (error) {
-            console.error('Real URL Test Error:', error);
-            alert('Real URL Test Error: ' + error.message);
-        }
-    }
-    
-    async testWithCommonUrl() {
-        try {
-            const testUrls = ['https://yahoo.co.jp'];
-            
-            console.log('Testing with common URL:', testUrls);
-            console.log('Data size:', JSON.stringify({ 
-                action: 'analyze_sites',
-                urls: testUrls,
-                ai_model: this.aiModelSelect.value
-            }).length);
-            
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    action: 'analyze_sites',
-                    urls: testUrls,
-                    ai_model: this.aiModelSelect.value
-                })
-            });
-            const result = await response.json();
-            console.log('Common URL Test Result:', result);
-            alert('Common URL Test: ' + JSON.stringify(result));
-        } catch (error) {
-            console.error('Common URL Test Error:', error);
-            alert('Common URL Test Error: ' + error.message);
-        }
-    }
 
     async analyzeSites() {
         const urls = this.getSelectedUrls();
         if (urls.length === 0) {
-            alert('少なくとも1つのURLを選択してください。');
+            this.showErrorMessage('少なくとも1つのURLを選択してください。');
             return;
         }
 
@@ -776,11 +652,11 @@ class SatelliteColumnSystem {
                 // 新規サイト作成時に多言語設定を読み込み
                 this.loadMultilingualSettings(result.site_id);
             } else {
-                alert('エラー: ' + result.error);
+                this.showErrorMessage('エラー: ' + result.error);
             }
         } catch (error) {
             console.error('サイト分析エラー:', error);
-            alert('サイト分析中にエラーが発生しました。');
+            this.showErrorMessage('サイト分析中にエラーが発生しました。');
         } finally {
             this.hideLoading();
         }
@@ -794,7 +670,7 @@ class SatelliteColumnSystem {
 
     async createArticleOutline() {
         if (!this.currentSiteId) {
-            alert('まずサイト分析を実行してください。');
+            this.showErrorMessage('まずサイト分析を実行してください。');
             return;
         }
 
@@ -816,11 +692,11 @@ class SatelliteColumnSystem {
                 this.displayArticleOutline();
                 this.articleOutlineSection.style.display = 'block';
             } else {
-                alert('エラー: ' + result.error);
+                this.showErrorMessage('エラー: ' + result.error);
             }
         } catch (error) {
             console.error('記事概要作成エラー:', error);
-            alert('記事概要作成中にエラーが発生しました。');
+            this.showErrorMessage('記事概要作成中にエラーが発生しました。');
         } finally {
             this.hideLoading();
         }
@@ -918,11 +794,11 @@ class SatelliteColumnSystem {
                     this.articles[articleIndex].publish_date = publishDate;
                 }
             } else {
-                alert('投稿日時の更新に失敗しました: ' + result.error);
+                this.showErrorMessage('投稿日時の更新に失敗しました: ' + result.error);
             }
         } catch (error) {
             console.error('投稿日時更新エラー:', error);
-            alert('投稿日時の更新中にエラーが発生しました。');
+            this.showErrorMessage('投稿日時の更新中にエラーが発生しました。');
         }
     }
 
@@ -967,13 +843,13 @@ class SatelliteColumnSystem {
                     this.articles[articleIndex] = result.article;
                     this.displayArticleOutline();
                 }
-                alert('記事を生成しました。');
+                this.showSuccessMessage('記事を生成しました。');
             } else {
-                alert('エラー: ' + result.error);
+                this.showErrorMessage('エラー: ' + result.error);
             }
         } catch (error) {
             console.error('記事生成エラー:', error);
-            alert('記事生成中にエラーが発生しました。');
+            this.showErrorMessage('記事生成中にエラーが発生しました。');
         } finally {
             this.generatingArticles.delete(articleId);
             this.hideLoading();
@@ -982,13 +858,13 @@ class SatelliteColumnSystem {
 
     async generateAllArticles() {
         if (!this.currentSiteId) {
-            alert('まず記事概要を作成してください。');
+            this.showErrorMessage('まず記事概要を作成してください。');
             return;
         }
 
         const draftArticles = this.articles.filter(article => article.status === 'draft');
         if (draftArticles.length === 0) {
-            alert('生成する記事がありません。');
+            this.showErrorMessage('生成する記事がありません。');
             return;
         }
 
@@ -998,7 +874,7 @@ class SatelliteColumnSystem {
 
         // 一括生成実行中フラグを設定
         if (this.isGeneratingAll) {
-            alert('既に一括生成中です。しばらくお待ちください。');
+            this.showErrorMessage('既に一括生成中です。しばらくお待ちください。');
             return;
         }
         
@@ -1057,11 +933,11 @@ class SatelliteColumnSystem {
                 `一括生成が中断されました。\n成功: ${successCount}記事\nエラー: ${errorCount}記事` :
                 `一括生成が完了しました。\n成功: ${successCount}記事\nエラー: ${errorCount}記事`;
             
-            alert(message);
+            this.showSuccessMessage(message);
             
         } catch (error) {
             console.error('一括生成エラー:', error);
-            alert('一括生成中にエラーが発生しました。');
+            this.showErrorMessage('一括生成中にエラーが発生しました。');
         } finally {
             this.isGeneratingAll = false;
             this.bulkGenerationCancelled = false;
@@ -1072,7 +948,7 @@ class SatelliteColumnSystem {
     async showArticleDetail(articleId) {
         const article = this.articles.find(a => a.id == articleId);
         if (!article || article.status !== 'generated') {
-            alert('記事が見つからないか、まだ生成されていません。');
+            this.showErrorMessage('記事が見つからないか、まだ生成されていません。');
             return;
         }
 
@@ -1154,13 +1030,13 @@ class SatelliteColumnSystem {
 
     async exportCsv() {
         if (!this.currentSiteId) {
-            alert('まずサイトを選択してください。');
+            this.showErrorMessage('まずサイトを選択してください。');
             return;
         }
 
         const generatedArticles = this.articles.filter(article => article.status === 'generated');
         if (generatedArticles.length === 0) {
-            alert('エクスポートする記事がありません。');
+            this.showErrorMessage('エクスポートする記事がありません。');
             return;
         }
 
@@ -1185,11 +1061,11 @@ class SatelliteColumnSystem {
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
             } else {
-                alert('CSV出力中にエラーが発生しました。');
+                this.showErrorMessage('CSV出力中にエラーが発生しました。');
             }
         } catch (error) {
             console.error('CSV出力エラー:', error);
-            alert('CSV出力中にエラーが発生しました。');
+            this.showErrorMessage('CSV出力中にエラーが発生しました。');
         }
     }
 
@@ -1241,7 +1117,7 @@ class SatelliteColumnSystem {
 
     async showAiLogs() {
         if (!this.currentSiteId) {
-            alert('まずサイトを選択してください。');
+            this.showErrorMessage('まずサイトを選択してください。');
             return;
         }
 
@@ -1263,11 +1139,11 @@ class SatelliteColumnSystem {
                 this.displayAiLogs(result);
                 this.aiLogsSection.style.display = 'block';
             } else {
-                alert('エラー: ' + result.error);
+                this.showErrorMessage('エラー: ' + result.error);
             }
         } catch (error) {
             console.error('AIログ取得エラー:', error);
-            alert('AIログ取得中にエラーが発生しました。');
+            this.showErrorMessage('AIログ取得中にエラーが発生しました。');
         } finally {
             this.hideLoading();
         }
@@ -1347,6 +1223,115 @@ class SatelliteColumnSystem {
                     this.showLogDetail(log);
                 }
             }
+        });
+    }
+
+    // エラーメッセージを表示
+    showErrorMessage(message) {
+        console.error(message);
+        this.showNotification(message, 'error');
+    }
+
+    // 成功メッセージを表示
+    showSuccessMessage(message) {
+        console.log(message);
+        this.showNotification(message, 'success');
+    }
+
+    // 通知を表示
+    showNotification(message, type = 'info') {
+        // 既存の通知を削除
+        const existingNotification = document.getElementById('notification');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+
+        // 新しい通知を作成
+        const notification = document.createElement('div');
+        notification.id = 'notification';
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            z-index: 10000;
+            max-width: 400px;
+            word-wrap: break-word;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.3s ease-out;
+        `;
+
+        // タイプに応じて色を設定
+        switch (type) {
+            case 'error':
+                notification.style.backgroundColor = '#f44336';
+                break;
+            case 'success':
+                notification.style.backgroundColor = '#4CAF50';
+                break;
+            case 'warning':
+                notification.style.backgroundColor = '#ff9800';
+                break;
+            default:
+                notification.style.backgroundColor = '#2196F3';
+        }
+
+        // CSSアニメーションを追加
+        if (!document.getElementById('notification-styles')) {
+            const style = document.createElement('style');
+            style.id = 'notification-styles';
+            style.textContent = `
+                @keyframes slideIn {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+                @keyframes slideOut {
+                    from {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                    to {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        document.body.appendChild(notification);
+
+        // 5秒後に自動削除
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }
+        }, 5000);
+
+        // クリックで削除
+        notification.addEventListener('click', () => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
         });
     }
 
@@ -1448,13 +1433,13 @@ class SatelliteColumnSystem {
             
             if (!result.success) {
                 console.error('多言語設定更新エラー:', result.error);
-                alert('多言語設定の更新に失敗しました: ' + result.error);
+                this.showErrorMessage('多言語設定の更新に失敗しました: ' + result.error);
             } else {
                 console.log(`言語 ${languageCode} が ${isEnabled ? '有効' : '無効'} になりました`);
             }
         } catch (error) {
             console.error('多言語設定更新エラー:', error);
-            alert('多言語設定の更新中にエラーが発生しました。');
+            this.showErrorMessage('多言語設定の更新中にエラーが発生しました。');
         } finally {
             this.updatingMultilingualSetting = false;
         }
@@ -1537,14 +1522,14 @@ class SatelliteColumnSystem {
 
     async generateMultilingualArticles() {
         if (!this.currentSiteId) {
-            alert('まずサイトを選択してください。');
+            this.showErrorMessage('まずサイトを選択してください。');
             return;
         }
 
         // 日本語記事が作成済みかチェック
         const hasJapaneseArticles = await this.checkJapaneseArticles();
         if (!hasJapaneseArticles) {
-            alert('多言語記事を生成するには、まず日本語記事を作成してください。');
+            this.showErrorMessage('多言語記事を生成するには、まず日本語記事を作成してください。');
             return;
         }
 
@@ -1569,7 +1554,7 @@ class SatelliteColumnSystem {
             
             if (!startResult.success) {
                 this.hideMultilingualProgress();
-                alert('エラー: ' + startResult.error);
+                this.showErrorMessage('エラー: ' + startResult.error);
                 return;
             }
             
@@ -1599,24 +1584,24 @@ class SatelliteColumnSystem {
                 this.hideMultilingualProgress();
                 
                 if (executeResult.success) {
-                    alert(`${executeResult.translated_count}件の多言語記事を生成しました。`);
+                    this.showSuccessMessage(`${executeResult.translated_count}件の多言語記事を生成しました。`);
                     // 現在の言語で記事一覧を更新
                     this.changeArticleLanguage(this.currentLanguage);
                 } else {
-                    alert('エラー: ' + executeResult.error);
+                    this.showErrorMessage('エラー: ' + executeResult.error);
                 }
             } catch (executeError) {
                 console.error('翻訳処理エラー:', executeError);
                 this.stopProgressPolling();
                 this.hideMultilingualProgress();
-                alert('翻訳処理中にエラーが発生しました。');
+                this.showErrorMessage('翻訳処理中にエラーが発生しました。');
             }
             
         } catch (error) {
             console.error('多言語記事生成エラー:', error);
             this.stopProgressPolling();
             this.hideMultilingualProgress();
-            alert('多言語記事生成中にエラーが発生しました。');
+            this.showErrorMessage('多言語記事生成中にエラーが発生しました。');
         }
     }
 
@@ -1706,7 +1691,7 @@ class SatelliteColumnSystem {
                         console.log('処理完了を検出');
                         this.stopProgressPolling();
                         this.hideMultilingualProgress();
-                        alert(`多言語記事生成が完了しました。${progress.language}`);
+                        this.showSuccessMessage(`多言語記事生成が完了しました。${progress.language}`);
                         // 現在の言語で記事一覧を更新
                         this.changeArticleLanguage(this.currentLanguage);
                     }
@@ -1716,14 +1701,14 @@ class SatelliteColumnSystem {
                         console.log('エラーを検出');
                         this.stopProgressPolling();
                         this.hideMultilingualProgress();
-                        alert('エラーが発生しました: ' + progress.language);
+                        this.showErrorMessage('エラーが発生しました: ' + progress.language);
                     }
                 } else if (!result.success && result.error === 'Progress expired') {
                     console.log('進捗ファイル期限切れ');
                     // 進捗ファイルが期限切れ（処理が完了している可能性）
                     this.stopProgressPolling();
                     this.hideMultilingualProgress();
-                    alert('多言語記事生成が完了しました。');
+                    this.showSuccessMessage('多言語記事生成が完了しました。');
                     this.changeArticleLanguage(this.currentLanguage);
                 } else {
                     console.log('進捗取得失敗:', result);
@@ -1818,7 +1803,7 @@ class SatelliteColumnSystem {
                         this.updateMultilingualSetting(language.code, checkbox.checked);
                     } else {
                         // サイトが選択されていない場合は警告
-                        alert('サイトを選択または作成後に言語設定を変更してください。');
+                        this.showErrorMessage('サイトを選択または作成後に言語設定を変更してください。');
                         checkbox.checked = false;
                     }
                 });
@@ -1831,28 +1816,4 @@ class SatelliteColumnSystem {
 document.addEventListener('DOMContentLoaded', () => {
     window.satelliteSystem = new SatelliteColumnSystem();
     
-    // デバッグ用テストボタンのイベントリスナー
-    document.getElementById('test-get-btn').addEventListener('click', () => {
-        window.satelliteSystem.testGetRequest();
-    });
-    
-    document.getElementById('test-post-btn').addEventListener('click', () => {
-        window.satelliteSystem.testPostRequest();
-    });
-    
-    document.getElementById('test-analyze-action-btn').addEventListener('click', () => {
-        window.satelliteSystem.testAnalyzeSitesAction();
-    });
-    
-    document.getElementById('test-with-urls-btn').addEventListener('click', () => {
-        window.satelliteSystem.testWithUrls();
-    });
-    
-    document.getElementById('test-with-real-url-btn').addEventListener('click', () => {
-        window.satelliteSystem.testWithRealUrl();
-    });
-    
-    document.getElementById('test-with-common-url-btn').addEventListener('click', () => {
-        window.satelliteSystem.testWithCommonUrl();
-    });
 });
