@@ -316,8 +316,11 @@ class SatelliteColumnSystem {
         if (this.articleDetailLanguageSelect) this.articleDetailLanguageSelect.addEventListener('change', (e) => this.changeArticleDetailLanguage(e.target.value));
         
         // モーダル関連
-        const closeBtn = document.querySelector('.close');
-        if (closeBtn) closeBtn.addEventListener('click', () => this.closeModal());
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('close')) {
+                this.closeModal();
+            }
+        });
         
         window.addEventListener('click', (e) => {
             if (e.target === this.articleDetailModal) {
@@ -447,6 +450,7 @@ class SatelliteColumnSystem {
         if (data.analysis) {
             this.analysisResult.innerHTML = this.formatAnalysisResult(data.analysis);
             this.analysisSection.style.display = 'block';
+            this.bindPolicyEditorEvents();
         }
         
         if (data.articles && data.articles.length > 0) {
@@ -461,6 +465,69 @@ class SatelliteColumnSystem {
         
         // 保存されている参照URLを取得して表示
         this.loadReferenceUrls(this.currentSiteId);
+    }
+
+    bindPolicyEditorEvents() {
+        const savePolicyBtn = document.getElementById('save-policy-btn');
+        const resetPolicyBtn = document.getElementById('reset-policy-btn');
+        
+        if (savePolicyBtn) {
+            savePolicyBtn.addEventListener('click', () => this.saveSitePolicy());
+        }
+        
+        if (resetPolicyBtn) {
+            resetPolicyBtn.addEventListener('click', () => this.resetSitePolicy());
+        }
+    }
+
+    async saveSitePolicy() {
+        const policyEditor = document.getElementById('site-policy-editor');
+        if (!policyEditor || !this.currentSiteId) {
+            this.showErrorMessage('記事作成方針を保存できませんでした。');
+            return;
+        }
+
+        const newPolicy = policyEditor.value.trim();
+        if (!newPolicy) {
+            this.showErrorMessage('記事作成方針を入力してください。');
+            return;
+        }
+
+        this.showLoading();
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_site_policy',
+                    site_id: this.currentSiteId,
+                    policy: newPolicy
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.showSuccessMessage('記事作成方針を保存しました。');
+            } else {
+                this.showErrorMessage('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('記事作成方針保存エラー:', error);
+            this.showErrorMessage('記事作成方針の保存中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    resetSitePolicy() {
+        const policyEditor = document.getElementById('site-policy-editor');
+        if (!policyEditor) {
+            return;
+        }
+
+        if (confirm('記事作成方針をリセットしますか？変更内容は失われます。')) {
+            this.loadSiteData(this.currentSiteId);
+        }
     }
 
     async crawlSiteUrls() {
@@ -662,6 +729,7 @@ class SatelliteColumnSystem {
                 
                 this.analysisResult.innerHTML = this.formatAnalysisResult(result.analysis);
                 this.analysisSection.style.display = 'block';
+                this.bindPolicyEditorEvents();
                 this.loadSites(); // サイト選択を更新
                 
                 // 新規サイト作成時に多言語設定を読み込み
@@ -679,7 +747,18 @@ class SatelliteColumnSystem {
 
     formatAnalysisResult(analysis) {
         return `
-            <div style="white-space: pre-wrap; margin: 15px 0;">${analysis}</div>
+            <div class="analysis-result-container">
+                <div class="analysis-policy-section">
+                    <h3>記事作成方針</h3>
+                    <div class="policy-edit-container">
+                        <textarea id="site-policy-editor" class="policy-editor" placeholder="記事作成方針を入力してください...">${analysis}</textarea>
+                        <div class="policy-actions">
+                            <button id="save-policy-btn" class="btn btn-primary">保存</button>
+                            <button id="reset-policy-btn" class="btn btn-secondary">リセット</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
     }
 
@@ -875,6 +954,10 @@ class SatelliteColumnSystem {
                 this.showSuccessMessage(`${languageCode}記事を生成しました。`);
                 // 記事データを更新
                 await this.updateArticleWithTranslations(articleId);
+                // 念のため記事一覧を再読み込み
+                setTimeout(() => {
+                    this.loadSiteData(this.currentSiteId);
+                }, 1000);
             } else {
                 this.showErrorMessage('エラー: ' + result.error);
             }
@@ -906,7 +989,12 @@ class SatelliteColumnSystem {
                     if (result.translations) {
                         this.articles[articleIndex].translations = result.translations;
                     }
+                    // 記事一覧を再表示
                     this.displayArticleOutline();
+                } else {
+                    // 記事が見つからない場合はサイト全体を再読み込み
+                    console.log('記事が見つからないため、サイトデータを再読み込みします');
+                    this.loadSiteData(this.currentSiteId);
                 }
             }
         } catch (error) {
@@ -1727,6 +1815,10 @@ class SatelliteColumnSystem {
 
         this.showMultilingualProgress('準備中...');
         
+        // 通知フラグをリセット
+        this.completionNotificationShown = false;
+        this.errorNotificationShown = false;
+        
         try {
             // まず準備処理を実行して進捗IDを取得
             const requestData = {
@@ -1838,10 +1930,33 @@ class SatelliteColumnSystem {
         if (progressFill && progressDetails && progressMessage) {
             const percentage = Math.round((current / total) * 100);
             progressFill.style.width = `${percentage}%`;
+            
+            // 言語名を日本語で表示
+            const languageNames = {
+                'en': '英語',
+                'es': 'スペイン語',
+                'fr': 'フランス語',
+                'de': 'ドイツ語',
+                'it': 'イタリア語',
+                'pt': 'ポルトガル語',
+                'ru': 'ロシア語',
+                'zh': '中国語',
+                'ko': '韓国語',
+                'ar': 'アラビア語',
+                'hi': 'ヒンディー語',
+                'th': 'タイ語',
+                'vi': 'ベトナム語',
+                'id': 'インドネシア語',
+                'ms': 'マレー語',
+                'tl': 'フィリピン語',
+                'ja': '日本語'
+            };
+            
+            const languageName = languageNames[language] || language;
             progressMessage.textContent = `${current}/${total}件の多言語記事を生成中`;
             progressDetails.innerHTML = `
                 <p><strong>記事:</strong> ${articleTitle}</p>
-                <p><strong>言語:</strong> ${language}</p>
+                <p><strong>対応中の言語:</strong> ${languageName}</p>
             `;
         }
     }
@@ -1893,7 +2008,10 @@ class SatelliteColumnSystem {
                         console.log('処理完了を検出');
                         this.stopProgressPolling();
                         this.hideMultilingualProgress();
-                        this.showSuccessMessage(`多言語記事生成が完了しました。${progress.language}`);
+                        if (!this.completionNotificationShown) {
+                            this.showSuccessMessage(`多言語記事生成が完了しました。${progress.language}`);
+                            this.completionNotificationShown = true;
+                        }
                         // 現在の言語で記事一覧を更新
                         this.changeArticleLanguage(this.currentLanguage);
                     }
@@ -1903,7 +2021,10 @@ class SatelliteColumnSystem {
                         console.log('エラーを検出');
                         this.stopProgressPolling();
                         this.hideMultilingualProgress();
-                        this.showErrorMessage('エラーが発生しました: ' + progress.language);
+                        if (!this.errorNotificationShown) {
+                            this.showErrorMessage('エラーが発生しました: ' + progress.language);
+                            this.errorNotificationShown = true;
+                        }
                     }
                 } else if (!result.success && result.error === 'Progress expired') {
                     console.log('進捗ファイル期限切れ');

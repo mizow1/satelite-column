@@ -197,6 +197,12 @@ try {
             }
             sendJsonResponse(updateMultilingualSettings($input['site_id'], $input['settings']));
             break;
+        case 'update_site_policy':
+            if (!isset($input['site_id']) || !isset($input['policy'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id and policy are required']);
+            }
+            sendJsonResponse(updateSitePolicy($input['site_id'], $input['policy']));
+            break;
         case 'generate_multilingual_articles':
             if (!isset($input['site_id']) || !isset($input['ai_model'])) {
                 sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
@@ -1470,6 +1476,28 @@ function updateMultilingualSettings($siteId, $settings) {
     }
 }
 
+function updateSitePolicy($siteId, $policy) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // sitesテーブルのanalysisフィールドを更新
+        $stmt = $pdo->prepare("UPDATE sites SET analysis = ? WHERE id = ?");
+        $result = $stmt->execute([$policy, $siteId]);
+        
+        if ($result) {
+            return ['success' => true, 'message' => 'Site policy updated successfully'];
+        } else {
+            return ['success' => false, 'error' => 'Failed to update site policy'];
+        }
+    } catch (PDOException $e) {
+        error_log("Database error in updateSitePolicy: " . $e->getMessage());
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        error_log("General error in updateSitePolicy: " . $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
 function generateMultilingualArticles($siteId, $aiModel) {
     try {
         $pdo = DatabaseConfig::getConnection();
@@ -1934,10 +1962,10 @@ function createImprovedTranslationPrompt($article, $languageCode, $languageName)
     
     $prompt .= "【出力形式】\n";
     $prompt .= "以下の形式で、各項目を完全に翻訳して出力してください：\n\n";
-    $prompt .= "タイトル: [翻訳されたタイトル]\n";
-    $prompt .= "キーワード: [翻訳されたSEOキーワード（カンマ区切り）]\n";
-    $prompt .= "概要: [翻訳された概要]\n";
-    $prompt .= "記事内容: [翻訳された記事内容（原文と同等の長さと詳細度を保持）]\n";
+    $prompt .= "Title: [翻訳されたタイトル]\n";
+    $prompt .= "Keywords: [翻訳されたSEOキーワード（カンマ区切り）]\n";
+    $prompt .= "Summary: [翻訳された概要]\n";
+    $prompt .= "Content: [翻訳された記事内容（原文と同等の長さと詳細度を保持）]\n";
     
     return $prompt;
 }
@@ -2021,10 +2049,11 @@ function createEnhancedTranslationPrompt($article, $languageCode, $languageName)
     $prompt .= "- 読者にとって価値ある内容を保持\n\n";
     
     $prompt .= "## 出力形式（厳密に従ってください）\n\n";
-    $prompt .= "タイトル: [完全に翻訳されたタイトル]\n\n";
-    $prompt .= "キーワード: [翻訳されたSEOキーワード（カンマ区切り）]\n\n";
-    $prompt .= "概要: [完全に翻訳された概要]\n\n";
-    $prompt .= "記事内容:\n[原文と同等の長さと詳細度を持つ完全な翻訳記事]\n\n";
+    $prompt .= "必ず以下の形式で出力してください：\n\n";
+    $prompt .= "Title: [完全に翻訳されたタイトル]\n\n";
+    $prompt .= "Keywords: [翻訳されたSEOキーワード（カンマ区切り）]\n\n";
+    $prompt .= "Summary: [完全に翻訳された概要]\n\n";
+    $prompt .= "Content:\n[原文と同等の長さと詳細度を持つ完全な翻訳記事]\n\n";
     
     $prompt .= "**重要**: 記事内容セクションでは、原文のすべての段落、情報、構造を漏れなく翻訳してください。\n";
     
@@ -2195,28 +2224,45 @@ function parseTranslatedArticle($translatedContent) {
         'content' => ''
     ];
     
-    $lines = explode("\n", $translatedContent);
-    $currentSection = '';
-    $contentLines = [];
+    // 多言語対応のパターンマッチング（英語キーワードを優先）
+    $patterns = [
+        'title' => '/(?:Title|タイトル|标题|標題|제목|Título|Titre|Titel|Titolo|Заголовок|عنوان|शीर्षक|ชื่อเรื่อง|Tiêu đề|Judul|Tajuk|Pamagat)[:：]\s*(.+?)(?=\n|\r|$)/u',
+        'keywords' => '/(?:Keywords|キーワード|关键词|關鍵詞|키워드|Palabras clave|Mots-clés|Schlüsselwörter|Parole chiave|Ключевые слова|كلمات مفتاحية|मुख्य शब्द|คำสำคัญ|Từ khóa|Kata kunci|Mga keyword)[:：]\s*(.+?)(?=\n|\r|$)/u',
+        'summary' => '/(?:Summary|概要|摘要|摘要|요약|Resumen|Résumé|Zusammenfassung|Riassunto|Краткое изложение|ملخص|सारांश|สรุป|Tóm tắt|Ringkasan|Buod)[:：]\s*(.+?)(?=\n(?:Content|記事内容|Article|文章内容|內容|기사 내용|Contenido del artículo|Contenu de l\'article|Artikelinhalt|Contenuto dell\'articolo|Содержание статьи|محتوى المقال|लेख की सामग्री|เนื้อหาบทความ|Nội dung bài viết|Konten artikel|Kandungan artikel|Nilalaman ng artikulo)|\r|$)/su',
+        'content' => '/(?:Content|記事内容|Article|文章内容|內容|기사 내용|Contenido del artículo|Contenu de l\'article|Artikelinhalt|Contenuto dell\'articolo|Содержание статьи|محتوى المقال|लेख की सामग्री|เนื้อหาบทความ|Nội dung bài viết|Konten artikel|Kandungan artikel|Nilalaman ng artikulo)[:：]\s*(.+?)$/su'
+    ];
     
-    foreach ($lines as $line) {
-        $line = trim($line);
-        
-        if (strpos($line, 'タイトル:') === 0) {
-            $article['title'] = trim(str_replace('タイトル:', '', $line));
-        } elseif (strpos($line, 'キーワード:') === 0) {
-            $article['keywords'] = trim(str_replace('キーワード:', '', $line));
-        } elseif (strpos($line, '概要:') === 0) {
-            $article['summary'] = trim(str_replace('概要:', '', $line));
-        } elseif (strpos($line, '記事内容:') === 0) {
-            $currentSection = 'content';
-            continue;
-        } elseif ($currentSection === 'content') {
-            $contentLines[] = $line;
+    foreach ($patterns as $key => $pattern) {
+        if (preg_match($pattern, $translatedContent, $matches)) {
+            $article[$key] = trim($matches[1]);
         }
     }
     
-    $article['content'] = implode("\n", $contentLines);
+    // フォールバック処理：パターンマッチングが失敗した場合は従来の方法を使用
+    if (empty($article['title']) && empty($article['keywords']) && empty($article['summary']) && empty($article['content'])) {
+        $lines = explode("\n", $translatedContent);
+        $currentSection = '';
+        $contentLines = [];
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            if (strpos($line, 'タイトル:') === 0) {
+                $article['title'] = trim(str_replace('タイトル:', '', $line));
+            } elseif (strpos($line, 'キーワード:') === 0) {
+                $article['keywords'] = trim(str_replace('キーワード:', '', $line));
+            } elseif (strpos($line, '概要:') === 0) {
+                $article['summary'] = trim(str_replace('概要:', '', $line));
+            } elseif (strpos($line, '記事内容:') === 0) {
+                $currentSection = 'content';
+                continue;
+            } elseif ($currentSection === 'content') {
+                $contentLines[] = $line;
+            }
+        }
+        
+        $article['content'] = implode("\n", $contentLines);
+    }
     
     return $article;
 }
@@ -2239,7 +2285,8 @@ function createMultilingualTables($pdo) {
         FOREIGN KEY (original_article_id) REFERENCES articles(id) ON DELETE CASCADE,
         INDEX idx_multilingual_articles_original_id (original_article_id),
         INDEX idx_multilingual_articles_language (language_code),
-        INDEX idx_multilingual_articles_status (status)
+        INDEX idx_multilingual_articles_status (status),
+        UNIQUE KEY unique_article_language (original_article_id, language_code)
     )");
     
     // 多言語設定テーブル
@@ -2385,6 +2432,12 @@ function generateSingleLanguageArticle($articleId, $languageCode, $aiModel) {
         
         // 翻訳結果を解析
         $translatedArticle = parseTranslatedArticle($response);
+        
+        // 翻訳データのバリデーション
+        if (empty($translatedArticle['title']) || empty($translatedArticle['content'])) {
+            error_log("Translation validation failed: title or content is empty");
+            return ['success' => false, 'error' => 'Translation failed: title or content is empty'];
+        }
         
         // 翻訳データを保存（既存の翻訳がある場合は更新）
         $stmt = $pdo->prepare("

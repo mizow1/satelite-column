@@ -341,15 +341,17 @@ header p {
 }
 
 #analysis-result {
-    background: #f8f9fa;
-    padding: 20px;
-    height: 300px;
-    overflow: auto;
     border-radius: 5px;
     margin-bottom: 20px;
-    border-left: 4px solid #667eea;
 }
-
+#site-policy-editor{
+    width: 100%;
+    height: 300px;
+    overflow: auto;
+    border: 2px solid #00f;
+    border-radius: 10px;
+    padding: 1em;
+}
 #create-article-outline {
     background: #2ed573;
     color: white;
@@ -437,6 +439,7 @@ header p {
     width: 100%;
     height: 100%;
     background-color: rgba(0,0,0,0.5);
+    overflow-y: auto;
 }
 
 .modal-content {
