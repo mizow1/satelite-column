@@ -2440,6 +2440,18 @@ class SatelliteColumnSystem {
             { code: 'hi', name: 'हिन्दी', icon: '印' }
         ];
 
+        // 選択した記事で既に作成されている言語を確認
+        const selectedArticles = this.articles.filter(article => selectedIds.includes(article.id));
+        const existingLanguages = new Set();
+        
+        selectedArticles.forEach(article => {
+            languages.forEach(lang => {
+                if (this.checkArticleLanguageContent(article, lang.code)) {
+                    existingLanguages.add(lang.code);
+                }
+            });
+        });
+
         const modalHtml = `
             <div id="selected-language-modal" class="modal" style="display: block;">
                 <div class="modal-content">
@@ -2459,10 +2471,11 @@ class SatelliteColumnSystem {
                                     <input type="checkbox" 
                                            id="selected-lang-${lang.code}" 
                                            value="${lang.code}" 
-                                           ${lang.code === 'ja' ? 'checked' : ''}>
+                                           ${existingLanguages.has(lang.code) ? 'checked' : ''}>
                                     <label for="selected-lang-${lang.code}">
                                         <span class="language-icon-modal">${lang.icon}</span>
                                         <span class="language-name">${lang.name}</span>
+                                        ${existingLanguages.has(lang.code) ? '<span class="existing-indicator">作成済</span>' : ''}
                                     </label>
                                 </div>
                             `).join('')}
