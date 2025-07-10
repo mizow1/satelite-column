@@ -14,6 +14,7 @@ CREATE TABLE multilingual_articles (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (original_article_id) REFERENCES articles(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_article_language (original_article_id, language_code),
     INDEX idx_multilingual_articles_original_id (original_article_id),
     INDEX idx_multilingual_articles_language (language_code),
     INDEX idx_multilingual_articles_status (status)

@@ -412,7 +412,7 @@ class SatelliteColumnSystem {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    action: 'get_site_data', 
+                    action: 'get_site_data_with_translations', 
                     site_id: siteId 
                 })
             });
@@ -743,7 +743,7 @@ class SatelliteColumnSystem {
         
         this.articleOutlineTable.innerHTML = tableHtml;
         
-        // 記事作成ボタンのイベント
+        // 記事作成ボタンと言語アイコンのイベント
         this.articleOutlineTable.addEventListener('click', (e) => {
             if (e.target.classList.contains('generate-article-btn')) {
                 const articleId = e.target.dataset.articleId;
@@ -752,6 +752,10 @@ class SatelliteColumnSystem {
                 e.preventDefault();
                 const articleId = e.target.dataset.articleId;
                 this.showArticleDetail(articleId);
+            } else if (e.target.classList.contains('language-icon')) {
+                const languageCode = e.target.dataset.language;
+                const articleId = e.target.dataset.articleId;
+                this.handleLanguageIconClick(articleId, languageCode);
             }
         });
     }
@@ -770,11 +774,110 @@ class SatelliteColumnSystem {
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
+    async handleLanguageIconClick(articleId, languageCode) {
+        const article = this.articles.find(a => a.id == articleId);
+        if (!article) {
+            this.showErrorMessage('記事が見つかりません。');
+            return;
+        }
+
+        const hasContent = this.checkArticleLanguageContent(article, languageCode);
+        
+        if (hasContent) {
+            // 作成済みの記事を表示
+            if (languageCode === 'ja') {
+                this.showArticleDetail(articleId);
+            } else {
+                this.showMultilingualArticleDetail(articleId, languageCode);
+            }
+        } else {
+            // 未作成の記事を生成
+            if (languageCode === 'ja') {
+                // 日本語記事の生成
+                await this.generateArticle(articleId);
+            } else {
+                // 多言語記事の生成（単体）
+                await this.generateSingleLanguageArticle(articleId, languageCode);
+            }
+        }
+    }
+
+    async generateSingleLanguageArticle(articleId, languageCode) {
+        const article = this.articles.find(a => a.id == articleId);
+        if (!article) {
+            this.showErrorMessage('記事が見つかりません。');
+            return;
+        }
+
+        // 日本語記事がない場合は先に作成が必要
+        if (!this.checkArticleLanguageContent(article, 'ja')) {
+            this.showErrorMessage('多言語記事を生成するには、まず日本語記事を作成してください。');
+            return;
+        }
+
+        this.showLoading();
+        
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'generate_single_language_article',
+                    article_id: articleId,
+                    language_code: languageCode,
+                    ai_model: this.aiModelSelect.value
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                this.showSuccessMessage(`${languageCode}記事を生成しました。`);
+                // 記事データを更新
+                await this.updateArticleWithTranslations(articleId);
+            } else {
+                this.showErrorMessage('エラー: ' + result.error);
+            }
+        } catch (error) {
+            console.error('単体言語記事生成エラー:', error);
+            this.showErrorMessage('記事生成中にエラーが発生しました。');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async updateArticleWithTranslations(articleId) {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_article_with_translations',
+                    article_id: articleId
+                })
+            });
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success) {
+                const articleIndex = this.articles.findIndex(a => a.id == articleId);
+                if (articleIndex !== -1) {
+                    // 記事データを更新
+                    this.articles[articleIndex] = { ...this.articles[articleIndex], ...result.article };
+                    if (result.translations) {
+                        this.articles[articleIndex].translations = result.translations;
+                    }
+                    this.displayArticleOutline();
+                }
+            }
+        } catch (error) {
+            console.error('記事翻訳データ更新エラー:', error);
+        }
+    }
+
     generateLanguageIcons(article) {
         const languages = [
             { code: 'ja', name: '日' },
             { code: 'en', name: '英' },
-            { code: 'zh-CN', name: '中' },
+            { code: 'zh-CN', name: '簡' },
             { code: 'zh-TW', name: '繁' },
             { code: 'ko', name: '韓' },
             { code: 'es', name: '西' },
@@ -802,8 +905,16 @@ class SatelliteColumnSystem {
             return article.status === 'generated' && article.content && article.content.trim() !== '';
         }
         
-        // 他の言語の場合は翻訳データをチェック（実装時に調整）
-        // 現在は未実装なので全て未作成として扱う
+        // 他の言語の場合は翻訳データをチェック
+        if (article.translations && Array.isArray(article.translations)) {
+            return article.translations.some(translation => 
+                translation.language_code === languageCode && 
+                translation.content && 
+                translation.content.trim() !== ''
+            );
+        }
+        
+        // 翻訳データがない場合は未作成として扱う
         return false;
     }
 
@@ -1535,6 +1646,7 @@ class SatelliteColumnSystem {
             if (result.success) {
                 const translation = result.translations.find(t => t.language_code === languageCode);
                 if (translation) {
+                    this.currentDetailArticleId = articleId;
                     document.getElementById('article-detail-content').innerHTML = `
                         <h3>${translation.title}</h3>
                         <p><strong>SEOキーワード:</strong> ${translation.seo_keywords}</p>
@@ -1542,14 +1654,16 @@ class SatelliteColumnSystem {
                         <hr>
                         <div style="white-space: pre-wrap; line-height: 1.6;">${translation.content}</div>
                     `;
+                    
+                    // モーダルを表示
+                    this.articleDetailModal.style.display = 'block';
                 } else {
-                    document.getElementById('article-detail-content').innerHTML = `
-                        <p>この記事の${languageCode}翻訳はまだ作成されていません。</p>
-                    `;
+                    this.showErrorMessage(`この記事の${languageCode}翻訳はまだ作成されていません。`);
                 }
             }
         } catch (error) {
             console.error('多言語記事詳細エラー:', error);
+            this.showErrorMessage('多言語記事の詳細表示中にエラーが発生しました。');
         }
     }
 

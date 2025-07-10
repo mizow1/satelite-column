@@ -222,6 +222,12 @@ try {
             }
             sendJsonResponse(getArticleTranslations($input['article_id']));
             break;
+        case 'get_article_with_translations':
+            if (!isset($input['article_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_id is required']);
+            }
+            sendJsonResponse(getArticleWithTranslations($input['article_id']));
+            break;
         case 'get_articles':
             if (!isset($input['site_id'])) {
                 sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
@@ -239,6 +245,28 @@ try {
                 sendJsonResponse(['success' => false, 'error' => 'site_id, ai_model, and progress_id are required']);
             }
             sendJsonResponse(executeMultilingualGeneration($input['site_id'], $input['ai_model'], $input['progress_id']));
+            break;
+        case 'generate_single_language_article':
+            if (!isset($input['article_id']) || !isset($input['language_code'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_id and language_code are required']);
+            }
+            $aiModel = $input['ai_model'] ?? 'gpt-4';
+            
+            try {
+                error_log("Generating single language article - Article ID: " . $input['article_id'] . ", Language: " . $input['language_code']);
+                $result = generateSingleLanguageArticle($input['article_id'], $input['language_code'], $aiModel);
+                error_log("Single language article generation result: " . json_encode($result));
+                sendJsonResponse($result);
+            } catch (Exception $e) {
+                error_log("generateSingleLanguageArticle error: " . $e->getMessage() . " - " . $e->getFile() . ":" . $e->getLine());
+                sendJsonResponse(['success' => false, 'error' => 'Internal server error: ' . $e->getMessage()]);
+            }
+            break;
+        case 'get_site_data_with_translations':
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
+            sendJsonResponse(getSiteDataWithTranslations($input['site_id']));
             break;
         default:
             sendJsonResponse(['success' => false, 'error' => 'Invalid action']);
@@ -1971,6 +1999,12 @@ function createEnhancedTranslationPrompt($article, $languageCode, $languageName)
         $prompt .= "- 保持文章的完整性和详细程度\n";
         $prompt .= "- 确保每个段落都被完整翻译\n";
         $prompt .= "- 专业术语使用准确的中文表达\n\n";
+    } elseif ($languageCode === 'zh-TW') {
+        $prompt .= "## 中文繁體特別指示\n";
+        $prompt .= "- 使用標準繁體中文\n";
+        $prompt .= "- 保持文章的完整性和詳細程度\n";
+        $prompt .= "- 確保每個段落都被完整翻譯\n";
+        $prompt .= "- 專業術語使用準確的中文表達\n\n";
     } elseif ($languageCode === 'fr') {
         $prompt .= "## Instructions spéciales pour le français\n";
         $prompt .= "- Utilisez un français naturel et fluide\n";
@@ -2071,13 +2105,17 @@ function getArticles($siteId) {
     try {
         $pdo = DatabaseConfig::getConnection();
         
-        
         // 記事を取得
         $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? ORDER BY created_at DESC");
         $stmt->execute([$siteId]);
         $articles = $stmt->fetchAll();
         
-        
+        // 各記事の翻訳データを取得
+        foreach ($articles as &$article) {
+            $stmt = $pdo->prepare("SELECT * FROM multilingual_articles WHERE original_article_id = ?");
+            $stmt->execute([$article['id']]);
+            $article['translations'] = $stmt->fetchAll();
+        }
         
         return ['success' => true, 'articles' => $articles];
     } catch (PDOException $e) {
@@ -2243,6 +2281,273 @@ function createDefaultLanguageSettings($pdo, $siteId) {
     
     foreach ($languages as $lang) {
         $stmt->execute([$siteId, $lang[0], $lang[1]]);
+    }
+}
+
+// 記事とその翻訳データを取得
+function getArticleWithTranslations($articleId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // オリジナル記事を取得
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE id = ?");
+        $stmt->execute([$articleId]);
+        $article = $stmt->fetch();
+        
+        if (!$article) {
+            return ['success' => false, 'error' => 'Article not found'];
+        }
+        
+        // 翻訳記事を取得
+        $stmt = $pdo->prepare("SELECT * FROM multilingual_articles WHERE original_article_id = ?");
+        $stmt->execute([$articleId]);
+        $translations = $stmt->fetchAll();
+        
+        return [
+            'success' => true,
+            'article' => $article,
+            'translations' => $translations
+        ];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// 単一記事の単一言語生成
+function generateSingleLanguageArticle($articleId, $languageCode, $aiModel) {
+    try {
+        error_log("generateSingleLanguageArticle called with: articleId=$articleId, languageCode=$languageCode, aiModel=$aiModel");
+        
+        $pdo = DatabaseConfig::getConnection();
+        
+        // オリジナル記事を取得
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE id = ?");
+        $stmt->execute([$articleId]);
+        $article = $stmt->fetch();
+        
+        if (!$article) {
+            error_log("Article not found with ID: $articleId");
+            return ['success' => false, 'error' => 'Article not found'];
+        }
+        
+        error_log("Article found: " . json_encode($article));
+        
+        // 言語情報を取得
+        $languageNames = [
+            'en' => 'English',
+            'es' => 'Spanish',
+            'fr' => 'French',
+            'de' => 'German',
+            'it' => 'Italian',
+            'pt' => 'Portuguese',
+            'ru' => 'Russian',
+            'ko' => 'Korean',
+            'zh' => 'Chinese',
+            'zh-CN' => 'Chinese (Simplified)',
+            'zh-TW' => 'Chinese (Traditional)',
+            'ar' => 'Arabic',
+            'hi' => 'Hindi',
+            'th' => 'Thai',
+            'vi' => 'Vietnamese',
+            'id' => 'Indonesian',
+            'ms' => 'Malay',
+            'tl' => 'Filipino',
+            'ja' => 'Japanese'
+        ];
+        
+        $languageName = $languageNames[$languageCode] ?? 'Unknown';
+        error_log("Language name resolved: $languageName for code: $languageCode");
+        
+        // 翻訳プロンプトを作成
+        try {
+            $prompt = createEnhancedTranslationPrompt($article, $languageCode, $languageName);
+            error_log("Translation prompt created successfully");
+        } catch (Exception $e) {
+            error_log("Error creating translation prompt: " . $e->getMessage());
+            return ['success' => false, 'error' => 'Error creating translation prompt: ' . $e->getMessage()];
+        }
+        
+        // AI APIを呼び出し
+        try {
+            $aiService = new AIService();
+            $response = $aiService->generateText($prompt, $aiModel);
+            error_log("AI service response: " . json_encode($response));
+        } catch (Exception $e) {
+            error_log("AI service error: " . $e->getMessage());
+            return ['success' => false, 'error' => 'AI service error: ' . $e->getMessage()];
+        }
+        
+        if (empty($response)) {
+            return ['success' => false, 'error' => 'AI generation failed: Empty response'];
+        }
+        
+        // 翻訳結果を解析
+        $translatedArticle = parseTranslatedArticle($response);
+        
+        // 翻訳データを保存（既存の翻訳がある場合は更新）
+        $stmt = $pdo->prepare("
+            INSERT INTO multilingual_articles 
+            (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'generated', NOW(), NOW())
+            ON DUPLICATE KEY UPDATE
+            title = VALUES(title),
+            seo_keywords = VALUES(seo_keywords),
+            summary = VALUES(summary),
+            content = VALUES(content),
+            ai_model = VALUES(ai_model),
+            status = 'generated',
+            updated_at = NOW()
+        ");
+        
+        $stmt->execute([
+            $articleId,
+            $languageCode,
+            $translatedArticle['title'],
+            $translatedArticle['keywords'],
+            $translatedArticle['summary'],
+            $translatedArticle['content'],
+            $aiModel
+        ]);
+        
+        $translationId = $pdo->lastInsertId();
+        if ($translationId === 0) {
+            // 更新の場合は既存のIDを取得
+            $stmt = $pdo->prepare("SELECT id FROM multilingual_articles WHERE original_article_id = ? AND language_code = ?");
+            $stmt->execute([$articleId, $languageCode]);
+            $translationId = $stmt->fetchColumn();
+        }
+        
+        return [
+            'success' => true,
+            'message' => 'Translation generated successfully',
+            'translation_id' => $translationId,
+            'article_id' => $articleId,
+            'language_code' => $languageCode,
+            'language_name' => $languageName,
+            'translated_article' => $translatedArticle
+        ];
+        
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// サイトデータと翻訳データを含む記事一覧を取得
+function getSiteDataWithTranslations($siteId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        // サイト情報取得
+        $stmt = $pdo->prepare("SELECT * FROM sites WHERE id = ?");
+        $stmt->execute([$siteId]);
+        $site = $stmt->fetch();
+        
+        if (!$site) {
+            return ['success' => false, 'error' => 'Site not found'];
+        }
+        
+        // 記事一覧を取得
+        $stmt = $pdo->prepare("SELECT * FROM articles WHERE site_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$siteId]);
+        $articles = $stmt->fetchAll();
+        
+        // 各記事の翻訳データを取得
+        foreach ($articles as &$article) {
+            $stmt = $pdo->prepare("SELECT * FROM multilingual_articles WHERE original_article_id = ?");
+            $stmt->execute([$article['id']]);
+            $article['translations'] = $stmt->fetchAll();
+        }
+        
+        return [
+            'success' => true,
+            'data' => [
+                'site' => $site,
+                'analysis' => $site['analysis_result'],
+                'articles' => $articles
+            ]
+        ];
+        
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// 翻訳データを保存する関数（内部使用）
+function saveTranslationData($pdo, $articleId, $languageCode, $translatedArticle, $aiModel) {
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO multilingual_articles 
+            (original_article_id, language_code, title, seo_keywords, summary, content, ai_model, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'generated', NOW(), NOW())
+            ON DUPLICATE KEY UPDATE
+            title = VALUES(title),
+            seo_keywords = VALUES(seo_keywords),
+            summary = VALUES(summary),
+            content = VALUES(content),
+            ai_model = VALUES(ai_model),
+            status = 'generated',
+            updated_at = NOW()
+        ");
+        
+        $stmt->execute([
+            $articleId,
+            $languageCode,
+            $translatedArticle['title'],
+            $translatedArticle['keywords'],
+            $translatedArticle['summary'],
+            $translatedArticle['content'],
+            $aiModel
+        ]);
+        
+        return true;
+    } catch (PDOException $e) {
+        throw new Exception('Translation save failed: ' . $e->getMessage());
+    }
+}
+
+// 各記事の翻訳データを取得する関数
+function getArticleTranslationData($articleId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        
+        $stmt = $pdo->prepare("
+            SELECT 
+                language_code,
+                title,
+                seo_keywords,
+                summary,
+                content,
+                ai_model,
+                status,
+                created_at,
+                updated_at
+            FROM multilingual_articles 
+            WHERE original_article_id = ?
+            ORDER BY language_code
+        ");
+        $stmt->execute([$articleId]);
+        $translations = $stmt->fetchAll();
+        
+        $translationData = [];
+        foreach ($translations as $translation) {
+            $translationData[$translation['language_code']] = $translation;
+        }
+        
+        return [
+            'success' => true,
+            'translations' => $translationData
+        ];
+        
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
     }
 }
 ?>
