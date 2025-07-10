@@ -67,52 +67,69 @@
         </div>
 
 
-        <div class="multilingual-settings" id="multilingual-settings">
-            <h3>多言語生成設定</h3>
-            <div class="language-toggles">
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-en" data-language="en">
-                    <label for="lang-en">英語</label>
+        <!-- 言語選択モーダル -->
+        <div class="language-selection-modal" id="language-selection-modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>生成言語を選択</h2>
+                <div class="language-selection-grid">
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-ja" data-language="ja" checked>
+                        <label for="modal-lang-ja">日本語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-en" data-language="en">
+                        <label for="modal-lang-en">英語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-zh-cn" data-language="zh-CN">
+                        <label for="modal-lang-zh-cn">中国語（簡体）</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-zh-tw" data-language="zh-TW">
+                        <label for="modal-lang-zh-tw">中国語（繁体）</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-ko" data-language="ko">
+                        <label for="modal-lang-ko">韓国語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-es" data-language="es">
+                        <label for="modal-lang-es">スペイン語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-ar" data-language="ar">
+                        <label for="modal-lang-ar">アラビア語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-pt" data-language="pt">
+                        <label for="modal-lang-pt">ポルトガル語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-fr" data-language="fr">
+                        <label for="modal-lang-fr">フランス語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-de" data-language="de">
+                        <label for="modal-lang-de">ドイツ語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-ru" data-language="ru">
+                        <label for="modal-lang-ru">ロシア語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-it" data-language="it">
+                        <label for="modal-lang-it">イタリア語</label>
+                    </div>
+                    <div class="language-option">
+                        <input type="checkbox" id="modal-lang-hi" data-language="hi">
+                        <label for="modal-lang-hi">ヒンディー語</label>
+                    </div>
                 </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-zh-cn" data-language="zh-CN">
-                    <label for="lang-zh-cn">中国語（簡体）</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-zh-tw" data-language="zh-TW">
-                    <label for="lang-zh-tw">中国語（繁體）</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-ko" data-language="ko">
-                    <label for="lang-ko">韓国語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-es" data-language="es">
-                    <label for="lang-es">スペイン語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-ar" data-language="ar">
-                    <label for="lang-ar">アラビア語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-pt" data-language="pt">
-                    <label for="lang-pt">ポルトガル語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-fr" data-language="fr">
-                    <label for="lang-fr">フランス語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-de" data-language="de">
-                    <label for="lang-de">ドイツ語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-ru" data-language="ru">
-                    <label for="lang-ru">ロシア語</label>
-                </div>
-                <div class="language-toggle">
-                    <input type="checkbox" id="lang-it" data-language="it">
-                    <label for="lang-it">イタリア語</label>
+                <div class="modal-actions">
+                    <button type="button" id="select-all-languages">全選択</button>
+                    <button type="button" id="deselect-all-languages">全解除</button>
+                    <button type="button" id="confirm-language-selection">確定</button>
                 </div>
             </div>
         </div>

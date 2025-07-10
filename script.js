@@ -283,12 +283,12 @@ class SatelliteColumnSystem {
         // 基本的なイベント
         if (this.analyzeSitesBtn) this.analyzeSitesBtn.addEventListener('click', () => this.analyzeSites());
         if (this.createArticleOutlineBtn) this.createArticleOutlineBtn.addEventListener('click', () => this.createArticleOutline());
-        if (this.generateAllArticlesBtn) this.generateAllArticlesBtn.addEventListener('click', () => this.generateAllArticles());
+        if (this.generateAllArticlesBtn) this.generateAllArticlesBtn.addEventListener('click', () => this.showLanguageSelectionModal('generate-all'));
         if (this.exportCsvBtn) this.exportCsvBtn.addEventListener('click', () => this.exportCsv());
         
         // 多言語記事生成ボタンのイベント
         const generateMultilingualArticlesBtn = document.getElementById('generate-multilingual-articles');
-        if (generateMultilingualArticlesBtn) generateMultilingualArticlesBtn.addEventListener('click', () => this.generateMultilingualArticles());
+        if (generateMultilingualArticlesBtn) generateMultilingualArticlesBtn.addEventListener('click', () => this.showLanguageSelectionModal('generate-multilingual'));
         if (this.siteSelect) this.siteSelect.addEventListener('change', (e) => this.loadSiteData(e.target.value));
         
         // 新しいURL解析関連のイベント
@@ -712,8 +712,7 @@ class SatelliteColumnSystem {
                         <th>SEOキーワード</th>
                         <th>概要</th>
                         <th>投稿日時</th>
-                        <th>ステータス</th>
-                        <th>操作</th>
+                        <th>多言語記事</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -733,11 +732,8 @@ class SatelliteColumnSystem {
                                        value="${this.formatDateTimeLocal(article.publish_date)}"
                                        onchange="window.satelliteSystem.updatePublishDate(${article.id}, this.value)">
                             </td>
-                            <td><span class="status-${article.status}">${this.getStatusText(article.status)}</span></td>
-                            <td>
-                                ${article.status !== 'generated' ? 
-                                    `<button class="generate-article-btn" data-article-id="${article.id}">記事作成</button>` : 
-                                    '作成済み'}
+                            <td class="language-icons">
+                                ${this.generateLanguageIcons(article)}
                             </td>
                         </tr>
                     `).join('')}
@@ -772,6 +768,43 @@ class SatelliteColumnSystem {
         const minutes = String(date.getMinutes()).padStart(2, '0');
         
         return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    generateLanguageIcons(article) {
+        const languages = [
+            { code: 'ja', name: '日' },
+            { code: 'en', name: '英' },
+            { code: 'zh-CN', name: '中' },
+            { code: 'zh-TW', name: '繁' },
+            { code: 'ko', name: '韓' },
+            { code: 'es', name: '西' },
+            { code: 'ar', name: '阿' },
+            { code: 'pt', name: '葡' },
+            { code: 'fr', name: '仏' },
+            { code: 'de', name: '独' },
+            { code: 'ru', name: '露' },
+            { code: 'it', name: '伊' },
+            { code: 'hi', name: '印' }
+        ];
+
+        return languages.map(lang => {
+            const hasContent = this.checkArticleLanguageContent(article, lang.code);
+            const status = hasContent ? 'created' : 'not-created';
+            const colorClass = hasContent ? 'language-created' : 'language-not-created';
+            
+            return `<span class="language-icon ${colorClass}" data-language="${lang.code}" data-article-id="${article.id}">${lang.name}</span>`;
+        }).join('');
+    }
+
+    checkArticleLanguageContent(article, languageCode) {
+        // 日本語の場合は記事のstatusをチェック
+        if (languageCode === 'ja') {
+            return article.status === 'generated' && article.content && article.content.trim() !== '';
+        }
+        
+        // 他の言語の場合は翻訳データをチェック（実装時に調整）
+        // 現在は未実装なので全て未作成として扱う
+        return false;
     }
 
     async updatePublishDate(articleId, publishDate) {
@@ -1520,7 +1553,7 @@ class SatelliteColumnSystem {
         }
     }
 
-    async generateMultilingualArticles() {
+    async generateMultilingualArticles(selectedLanguages = null) {
         if (!this.currentSiteId) {
             this.showErrorMessage('まずサイトを選択してください。');
             return;
@@ -1533,7 +1566,7 @@ class SatelliteColumnSystem {
             return;
         }
 
-        if (!confirm('有効な言語で多言語記事を生成しますか？')) {
+        if (!selectedLanguages && !confirm('有効な言語で多言語記事を生成しますか？')) {
             return;
         }
 
@@ -1541,14 +1574,21 @@ class SatelliteColumnSystem {
         
         try {
             // まず準備処理を実行して進捗IDを取得
+            const requestData = {
+                action: 'generate_multilingual_articles_with_progress',
+                site_id: this.currentSiteId,
+                ai_model: this.aiModelSelect.value
+            };
+            
+            // 選択した言語がある場合は追加
+            if (selectedLanguages) {
+                requestData.selected_languages = selectedLanguages;
+            }
+            
             const startResponse = await fetch('api.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'generate_multilingual_articles_with_progress',
-                    site_id: this.currentSiteId,
-                    ai_model: this.aiModelSelect.value
-                })
+                body: JSON.stringify(requestData)
             });
             const startResult = await this.handleApiResponse(startResponse);
             
@@ -1565,15 +1605,22 @@ class SatelliteColumnSystem {
             
             // 翻訳処理を開始
             try {
+                const executeRequestData = {
+                    action: 'execute_multilingual_generation',
+                    site_id: this.currentSiteId,
+                    ai_model: this.aiModelSelect.value,
+                    progress_id: this.currentProgressId
+                };
+                
+                // 選択した言語がある場合は追加
+                if (selectedLanguages) {
+                    executeRequestData.selected_languages = selectedLanguages;
+                }
+                
                 const executeResponse = await fetch('api.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'execute_multilingual_generation',
-                        site_id: this.currentSiteId,
-                        ai_model: this.aiModelSelect.value,
-                        progress_id: this.currentProgressId
-                    })
+                    body: JSON.stringify(executeRequestData)
                 });
                 
                 const executeResult = await this.handleApiResponse(executeResponse);
@@ -1809,6 +1856,154 @@ class SatelliteColumnSystem {
                 });
             }
         });
+    }
+
+    // 言語選択モーダルを表示
+    showLanguageSelectionModal(action) {
+        const languages = [
+            { code: 'ja', name: '日本語', icon: '日' },
+            { code: 'en', name: 'English', icon: '英' },
+            { code: 'zh-CN', name: '中文（简体）', icon: '中' },
+            { code: 'zh-TW', name: '中文（繁體）', icon: '繁' },
+            { code: 'ko', name: '한국어', icon: '韓' },
+            { code: 'es', name: 'Español', icon: '西' },
+            { code: 'ar', name: 'العربية', icon: '阿' },
+            { code: 'pt', name: 'Português', icon: '葡' },
+            { code: 'fr', name: 'Français', icon: '仏' },
+            { code: 'de', name: 'Deutsch', icon: '独' },
+            { code: 'ru', name: 'Русский', icon: '露' },
+            { code: 'it', name: 'Italiano', icon: '伊' },
+            { code: 'hi', name: 'हिन्दी', icon: '印' }
+        ];
+
+        const modalHtml = `
+            <div id="language-selection-modal" class="modal" style="display: block;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>言語選択</h2>
+                        <span class="close" onclick="window.satelliteSystem.hideLanguageSelectionModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="language-selection-controls">
+                            <button id="select-all-languages" class="btn btn-secondary">全選択</button>
+                            <button id="deselect-all-languages" class="btn btn-secondary">全解除</button>
+                        </div>
+                        <div class="language-grid">
+                            ${languages.map(lang => `
+                                <div class="language-item">
+                                    <input type="checkbox" 
+                                           id="lang-${lang.code}" 
+                                           value="${lang.code}" 
+                                           ${lang.code === 'ja' ? 'checked' : ''}>
+                                    <label for="lang-${lang.code}">
+                                        <span class="language-icon-modal">${lang.icon}</span>
+                                        <span class="language-name">${lang.name}</span>
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="confirm-language-selection" class="btn btn-primary">確定</button>
+                        <button onclick="window.satelliteSystem.hideLanguageSelectionModal()" class="btn btn-secondary">キャンセル</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // イベントリスナーを追加
+        document.getElementById('select-all-languages').addEventListener('click', () => {
+            document.querySelectorAll('#language-selection-modal input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        });
+
+        document.getElementById('deselect-all-languages').addEventListener('click', () => {
+            document.querySelectorAll('#language-selection-modal input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        });
+
+        document.getElementById('confirm-language-selection').addEventListener('click', () => {
+            const selectedLanguages = Array.from(document.querySelectorAll('#language-selection-modal input[type="checkbox"]:checked'))
+                .map(checkbox => checkbox.value);
+            
+            this.hideLanguageSelectionModal();
+            
+            if (action === 'generate-all') {
+                this.generateAllArticlesWithLanguages(selectedLanguages);
+            } else if (action === 'generate-multilingual') {
+                this.generateMultilingualArticlesWithLanguages(selectedLanguages);
+            }
+        });
+
+        // モーダルクリックで閉じる
+        document.getElementById('language-selection-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'language-selection-modal') {
+                this.hideLanguageSelectionModal();
+            }
+        });
+    }
+
+    // 言語選択モーダルを非表示
+    hideLanguageSelectionModal() {
+        const modal = document.getElementById('language-selection-modal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    // 選択した言語で全記事一括作成
+    async generateAllArticlesWithLanguages(selectedLanguages) {
+        if (selectedLanguages.length === 0) {
+            this.showErrorMessage('言語を選択してください。');
+            return;
+        }
+
+        if (selectedLanguages.includes('ja')) {
+            // 日本語が選択されている場合は従来の処理
+            await this.generateAllArticles();
+        }
+
+        // 日本語以外の言語が選択されている場合は多言語記事生成
+        const otherLanguages = selectedLanguages.filter(lang => lang !== 'ja');
+        if (otherLanguages.length > 0) {
+            await this.generateMultilingualArticlesWithLanguages(otherLanguages);
+        }
+    }
+
+    // 選択した言語で多言語記事生成
+    async generateMultilingualArticlesWithLanguages(selectedLanguages) {
+        if (selectedLanguages.length === 0) {
+            this.showErrorMessage('言語を選択してください。');
+            return;
+        }
+
+        if (!this.currentSiteId) {
+            this.showErrorMessage('まずサイトを選択してください。');
+            return;
+        }
+
+        // 日本語記事が作成済みかチェック
+        const hasJapaneseArticles = await this.checkJapaneseArticles();
+        if (!hasJapaneseArticles) {
+            this.showErrorMessage('多言語記事を生成するには、まず日本語記事を作成してください。');
+            return;
+        }
+
+        const filteredLanguages = selectedLanguages.filter(lang => lang !== 'ja');
+        if (filteredLanguages.length === 0) {
+            this.showErrorMessage('日本語以外の言語を選択してください。');
+            return;
+        }
+
+        if (!confirm(`選択した${filteredLanguages.length}言語で多言語記事を生成しますか？`)) {
+            return;
+        }
+
+        await this.generateMultilingualArticles(filteredLanguages);
     }
 }
 
