@@ -333,6 +333,21 @@ try {
             }
             sendJsonResponse(getSitePolicy($input['site_id']));
             break;
+        case 'delete_articles':
+            if (!isset($input['article_ids']) || !is_array($input['article_ids'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_ids array is required']);
+            }
+            error_log('Delete articles called with IDs: ' . json_encode($input['article_ids']));
+            $result = deleteArticles($input['article_ids']);
+            error_log('Delete articles result: ' . json_encode($result));
+            sendJsonResponse($result);
+            break;
+        case 'update_article_field':
+            if (!isset($input['article_id']) || !isset($input['field']) || !isset($input['value'])) {
+                sendJsonResponse(['success' => false, 'error' => 'article_id, field, and value are required']);
+            }
+            sendJsonResponse(updateArticleField($input['article_id'], $input['field'], $input['value']));
+            break;
         default:
             sendJsonResponse(['success' => false, 'error' => 'Invalid action']);
     }
@@ -2737,6 +2752,118 @@ function getSitePolicy($siteId) {
     } catch (PDOException $e) {
         return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function deleteArticles($articleIds) {
+    error_log('deleteArticles function called with: ' . json_encode($articleIds));
+    
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        error_log('Database connection established');
+        
+        // 入力値の検証
+        if (empty($articleIds) || !is_array($articleIds)) {
+            error_log('Input validation failed: empty or not array');
+            return ['success' => false, 'error' => '削除対象の記事が指定されていません。'];
+        }
+        
+        // 記事IDを整数に変換
+        $cleanIds = array_map('intval', array_filter($articleIds, 'is_numeric'));
+        error_log('Clean IDs: ' . json_encode($cleanIds));
+        
+        if (empty($cleanIds)) {
+            error_log('No valid article IDs found');
+            return ['success' => false, 'error' => '有効な記事IDが指定されていません。'];
+        }
+        
+        error_log('Starting transaction');
+        $pdo->beginTransaction();
+        
+        // まず多言語記事の削除（外部キー制約対応）
+        $placeholders = str_repeat('?,', count($cleanIds) - 1) . '?';
+        error_log('Deleting from multilingual_articles with placeholders: ' . $placeholders);
+        try {
+            $stmt = $pdo->prepare("DELETE FROM multilingual_articles WHERE article_id IN ($placeholders)");
+            $stmt->execute($cleanIds);
+            error_log('Multilingual articles deleted');
+        } catch (PDOException $e) {
+            error_log('Multilingual articles table might not exist or error: ' . $e->getMessage());
+            // Continue execution even if multilingual_articles table doesn't exist
+        }
+        
+        // 記事の削除
+        error_log('Deleting from articles');
+        $stmt = $pdo->prepare("DELETE FROM articles WHERE id IN ($placeholders)");
+        $stmt->execute($cleanIds);
+        
+        $deletedCount = $stmt->rowCount();
+        error_log('Articles deleted count: ' . $deletedCount);
+        
+        $pdo->commit();
+        error_log('Transaction committed');
+        
+        return [
+            'success' => true,
+            'message' => "{$deletedCount}件の記事を削除しました。",
+            'deleted_count' => $deletedCount
+        ];
+        
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollback();
+        }
+        error_log('記事削除エラー: ' . $e->getMessage());
+        return ['success' => false, 'error' => '記事の削除中にエラーが発生しました。'];
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollback();
+        }
+        error_log('記事削除エラー: ' . $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// 記事フィールドの更新
+function updateArticleField($articleId, $field, $value) {
+    $pdo = DatabaseConfig::getConnection();
+    
+    try {
+        // 入力値の検証
+        if (empty($articleId) || !is_numeric($articleId)) {
+            return ['success' => false, 'error' => '有効な記事IDが指定されていません。'];
+        }
+        
+        $articleId = intval($articleId);
+        
+        // 許可されたフィールドの確認（セキュリティのため）
+        $allowedFields = ['title', 'seo_keywords', 'summary', 'publish_date'];
+        if (!in_array($field, $allowedFields)) {
+            return ['success' => false, 'error' => '更新が許可されていないフィールドです。'];
+        }
+        
+        // フィールドの更新
+        $sql = "UPDATE articles SET {$field} = ? WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$value, $articleId]);
+        
+        $updatedCount = $stmt->rowCount();
+        
+        if ($updatedCount > 0) {
+            return [
+                'success' => true,
+                'message' => "記事の{$field}を更新しました。"
+            ];
+        } else {
+            return ['success' => false, 'error' => '指定された記事が見つからないか、更新する内容がありません。'];
+        }
+        
+    } catch (PDOException $e) {
+        error_log('記事フィールド更新エラー: ' . $e->getMessage());
+        return ['success' => false, 'error' => '記事フィールドの更新中にエラーが発生しました。'];
+    } catch (Exception $e) {
+        error_log('記事フィールド更新エラー: ' . $e->getMessage());
         return ['success' => false, 'error' => $e->getMessage()];
     }
 }
