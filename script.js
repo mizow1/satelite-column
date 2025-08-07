@@ -834,7 +834,8 @@ class SatelliteColumnSystem {
                                        class="publish-date-input" 
                                        data-article-id="${article.id}"
                                        value="${this.formatDateTimeLocal(article.publish_date)}"
-                                       onchange="window.satelliteSystem.updatePublishDate(${article.id}, this.value)">
+                                       onchange="window.satelliteSystem.updatePublishDate(${article.id}, this.value)"
+                                       onfocus="window.satelliteSystem.autoFillPublishDate(this)">
                             </td>
                             <td class="language-icons">
                                 ${this.generateLanguageIcons(article)}
@@ -1072,6 +1073,56 @@ class SatelliteColumnSystem {
         } catch (error) {
             console.error('投稿日時更新エラー:', error);
             this.showErrorMessage('投稿日時の更新中にエラーが発生しました。');
+        }
+    }
+
+    // 年月日指定がないものに対して最後の年月日＋1日ずつ設定する機能
+    autoFillPublishDate(inputElement) {
+        // 既に値が設定されている場合は何もしない
+        if (inputElement.value && inputElement.value.trim() !== '') {
+            return;
+        }
+        
+        // 全てのpublish-date-input要素を取得
+        const allDateInputs = document.querySelectorAll('.publish-date-input');
+        let lastValidDate = null;
+        
+        // 設定済みの最後の日付を取得
+        for (let i = 0; i < allDateInputs.length; i++) {
+            const input = allDateInputs[i];
+            if (input.value && input.value.trim() !== '') {
+                const date = new Date(input.value);
+                if (!isNaN(date.getTime())) {
+                    if (!lastValidDate || date > lastValidDate) {
+                        lastValidDate = date;
+                    }
+                }
+            }
+        }
+        
+        // 設定済みの日付がない場合は今日の日付を使用
+        if (!lastValidDate) {
+            lastValidDate = new Date();
+        }
+        
+        // 最後の日付の翌日を計算
+        const nextDate = new Date(lastValidDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+        
+        // 同じ時間帯でない場合は前の記事と同じ時刻に設定
+        if (lastValidDate.getHours() !== 0 || lastValidDate.getMinutes() !== 0) {
+            nextDate.setHours(lastValidDate.getHours());
+            nextDate.setMinutes(lastValidDate.getMinutes());
+        }
+        
+        // フォーマットしてinput要素に設定
+        const formattedDate = this.formatDateTimeLocal(nextDate.toISOString());
+        inputElement.value = formattedDate;
+        
+        // 値が変更されたことを通知するためにchangeイベントを発火
+        const articleId = inputElement.getAttribute('data-article-id');
+        if (articleId) {
+            this.updatePublishDate(parseInt(articleId), formattedDate);
         }
     }
 
