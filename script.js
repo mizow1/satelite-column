@@ -1,3 +1,63 @@
+// 共通記事作成処理用のユーティリティ関数群
+class ArticleCreationUtils {
+    static async handleApiResponse(response) {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const text = await response.text();
+        
+        // レスポンスがHTMLかJSONかを判別
+        if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            console.error('HTML response received (first 500 chars):', text.substring(0, 500));
+            
+            // エラーメッセージを抽出してみる
+            const errorMatch = text.match(/<title>(.*?)<\/title>/i);
+            const errorTitle = errorMatch ? errorMatch[1] : 'Unknown error';
+            
+            throw new Error(`サーバーからHTMLレスポンスが返されました: ${errorTitle}`);
+        }
+        
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            console.error('Invalid JSON response:', text.substring(0, 200));
+            throw new Error('サーバーから無効なJSONが返されました: ' + error.message);
+        }
+    }
+
+    static async createSingleArticleOutline(siteId, aiModel) {
+        if (!siteId) {
+            throw new Error('サイトIDが指定されていません。');
+        }
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'add_article_outline',
+                    site_id: siteId,
+                    ai_model: aiModel,
+                    check_duplicates: true,
+                    count: 1
+                })
+            });
+            
+            const result = await ArticleCreationUtils.handleApiResponse(response);
+            
+            if (result.success && result.articles && result.articles.length > 0) {
+                return result.articles[0];
+            } else {
+                throw new Error(result.error || '記事概要生成に失敗しました');
+            }
+        } catch (error) {
+            console.error('単一記事概要作成エラー:', error);
+            throw error;
+        }
+    }
+}
+
 class AuthManager {
     constructor() {
         this.currentUser = null;
@@ -532,7 +592,7 @@ class SatelliteColumnSystem {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'get_sites' })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.updateSiteSelect(result.sites);
@@ -542,31 +602,6 @@ class SatelliteColumnSystem {
         }
     }
     
-    async handleApiResponse(response) {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const text = await response.text();
-        
-        // レスポンスがHTMLかJSONかを判別
-        if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-            console.error('HTML response received (first 500 chars):', text.substring(0, 500));
-            
-            // エラーメッセージを抽出してみる
-            const errorMatch = text.match(/<title>(.*?)<\/title>/i);
-            const errorTitle = errorMatch ? errorMatch[1] : 'Unknown error';
-            
-            throw new Error(`サーバーからHTMLレスポンスが返されました: ${errorTitle}`);
-        }
-        
-        try {
-            return JSON.parse(text);
-        } catch (error) {
-            console.error('Invalid JSON response:', text.substring(0, 200));
-            throw new Error('サーバーから無効なJSONが返されました: ' + error.message);
-        }
-    }
 
     updateSiteSelect(sites) {
         this.siteSelect.innerHTML = '<option value="">新規サイト</option>';
@@ -603,7 +638,7 @@ class SatelliteColumnSystem {
                     site_id: siteId 
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.currentSiteId = siteId;
@@ -678,7 +713,7 @@ class SatelliteColumnSystem {
                     policy: newPolicy
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.showSuccessMessage('記事作成方針を保存しました。');
@@ -725,7 +760,7 @@ class SatelliteColumnSystem {
                     base_url: baseUrl
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.discoveredUrls = result.urls;
@@ -850,7 +885,7 @@ class SatelliteColumnSystem {
                     body: JSON.stringify(requestData)
                 });
                 
-                const result = await this.handleApiResponse(response);
+                const result = await ArticleCreationUtils.handleApiResponse(response);
                 if (result.success) {
                     groupAnalyses.push(result.analysis);
                     
@@ -892,7 +927,7 @@ class SatelliteColumnSystem {
                 body: JSON.stringify(finalRequestData)
             });
             
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.currentSiteId = result.site_id;
@@ -937,34 +972,7 @@ class SatelliteColumnSystem {
     }
 
     async createSingleArticleOutline(siteId, aiModel) {
-        if (!siteId) {
-            throw new Error('サイトIDが指定されていません。');
-        }
-
-        try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'add_article_outline',
-                    site_id: siteId,
-                    ai_model: aiModel,
-                    check_duplicates: true,
-                    count: 1
-                })
-            });
-            
-            const result = await this.handleApiResponse(response);
-            
-            if (result.success && result.articles && result.articles.length > 0) {
-                return result.articles[0];
-            } else {
-                throw new Error(result.error || '記事概要生成に失敗しました');
-            }
-        } catch (error) {
-            console.error('単一記事概要作成エラー:', error);
-            throw error;
-        }
+        return await ArticleCreationUtils.createSingleArticleOutline(siteId, aiModel);
     }
 
     async createArticleOutline() {
@@ -985,12 +993,20 @@ class SatelliteColumnSystem {
                     check_duplicates: true
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.articles = result.articles;
                 this.displayArticleOutline();
                 this.articleOutlineSection.style.display = 'block';
+                
+                // 重複スキップの情報を表示
+                if (result.skipped_duplicates && result.skipped_duplicates.length > 0) {
+                    const skippedMessage = `${result.inserted_count}件の記事を作成しました。重複により${result.skipped_count}件の記事をスキップしました：\n${result.skipped_duplicates.join('\n')}`;
+                    this.showWarningMessage(skippedMessage);
+                } else if (result.inserted_count !== undefined) {
+                    this.showSuccessMessage(`${result.inserted_count}件の記事を作成しました。`);
+                }
             } else {
                 this.showErrorMessage('エラー: ' + result.error);
             }
@@ -1154,7 +1170,7 @@ class SatelliteColumnSystem {
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.showSuccessMessage(`${languageCode}記事を生成しました。`);
@@ -1185,7 +1201,7 @@ class SatelliteColumnSystem {
                     article_id: articleId
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 const articleIndex = this.articles.findIndex(a => a.id == articleId);
@@ -1264,7 +1280,7 @@ class SatelliteColumnSystem {
                     publish_date: publishDate
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 // 記事データを更新
@@ -1363,7 +1379,7 @@ class SatelliteColumnSystem {
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 // 記事一覧を更新
@@ -1434,7 +1450,7 @@ class SatelliteColumnSystem {
                             ai_model: this.aiModelSelect.value
                         })
                     });
-                    const result = await this.handleApiResponse(response);
+                    const result = await ArticleCreationUtils.handleApiResponse(response);
                     
                     if (result.success) {
                         successCount++;
@@ -1609,7 +1625,7 @@ class SatelliteColumnSystem {
                     urls: urls
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (!result.success) {
                 console.error('参照URL保存エラー:', result.error);
@@ -1631,7 +1647,7 @@ class SatelliteColumnSystem {
                     site_id: siteId
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success && result.urls.length > 0) {
                 this.discoveredUrls = result.urls;
@@ -1662,7 +1678,7 @@ class SatelliteColumnSystem {
                     offset: 0
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.displayAiLogs(result);
@@ -1765,6 +1781,12 @@ class SatelliteColumnSystem {
     showSuccessMessage(message) {
         console.log(message);
         this.showNotification(message, 'success');
+    }
+
+    // 警告メッセージを表示
+    showWarningMessage(message) {
+        console.log(message);
+        this.showNotification(message, 'warning');
     }
 
     // 通知を表示
@@ -1910,7 +1932,7 @@ class SatelliteColumnSystem {
                     site_id: siteId
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.displayMultilingualSettings(result.settings);
@@ -1956,7 +1978,7 @@ class SatelliteColumnSystem {
                     settings: settings
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             console.log('多言語設定更新結果:', result);
             
@@ -1990,7 +2012,7 @@ class SatelliteColumnSystem {
                     language_code: languageCode
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.articles = result.articles;
@@ -2026,7 +2048,7 @@ class SatelliteColumnSystem {
                     article_id: articleId
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 const translation = result.translations.find(t => t.language_code === languageCode);
@@ -2093,7 +2115,7 @@ class SatelliteColumnSystem {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestData)
             });
-            const startResult = await this.handleApiResponse(startResponse);
+            const startResult = await ArticleCreationUtils.handleApiResponse(startResponse);
             
             if (!startResult.success) {
                 this.hideMultilingualProgress();
@@ -2126,7 +2148,7 @@ class SatelliteColumnSystem {
                     body: JSON.stringify(executeRequestData)
                 });
                 
-                const executeResult = await this.handleApiResponse(executeResponse);
+                const executeResult = await ArticleCreationUtils.handleApiResponse(executeResponse);
                 console.log('翻訳処理完了:', executeResult);
                 
                 // 進捗ポーリングを停止
@@ -2245,7 +2267,7 @@ class SatelliteColumnSystem {
                     })
                 });
                 
-                const result = await this.handleApiResponse(response);
+                const result = await ArticleCreationUtils.handleApiResponse(response);
                 console.log('進捗結果:', result);
                 
                 if (result.success && result.progress) {
@@ -2319,7 +2341,7 @@ class SatelliteColumnSystem {
                     site_id: this.currentSiteId
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             console.log('取得した記事データ:', result);
             
@@ -2656,7 +2678,7 @@ class SatelliteColumnSystem {
                     article_ids: selectedIds
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.showSuccessMessage(`${selectedIds.length}件の記事を削除しました。`);
@@ -2685,7 +2707,7 @@ class SatelliteColumnSystem {
                     value: value
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 // 記事データを更新
@@ -2740,7 +2762,7 @@ class SatelliteColumnSystem {
                     article_ids: [articleId]
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.showSuccessMessage('記事を削除しました。');
@@ -2837,7 +2859,7 @@ class SatelliteColumnSystem {
                     changes: changes
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.showSuccessMessage('記事を保存しました。');
@@ -2979,7 +3001,7 @@ class SatelliteColumnSystem {
                     ai_model: this.aiModelSelect.value
                 })
             });
-            const result = await this.handleApiResponse(response);
+            const result = await ArticleCreationUtils.handleApiResponse(response);
             
             if (result.success) {
                 this.showSuccessMessage(`選択した記事の生成を開始しました。`);
@@ -3044,7 +3066,7 @@ class SatelliteColumnSystem {
             })
         });
         
-        const result = await this.handleApiResponse(response);
+        const result = await ArticleCreationUtils.handleApiResponse(response);
         if (!result.success) {
             throw new Error(result.error || '記事生成に失敗しました');
         }
@@ -3163,34 +3185,7 @@ class MultiSiteArticleManager {
     }
 
     async createSingleArticleOutline(siteId, aiModel) {
-        if (!siteId) {
-            throw new Error('サイトIDが指定されていません。');
-        }
-
-        try {
-            const response = await fetch('api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'add_article_outline',
-                    site_id: siteId,
-                    ai_model: aiModel,
-                    check_duplicates: true,
-                    count: 1
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success && result.articles && result.articles.length > 0) {
-                return result.articles[0];
-            } else {
-                throw new Error(result.error || '記事概要生成に失敗しました');
-            }
-        } catch (error) {
-            console.error('単一記事概要作成エラー:', error);
-            throw error;
-        }
+        return await ArticleCreationUtils.createSingleArticleOutline(siteId, aiModel);
     }
 
     async startCreation() {

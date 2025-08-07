@@ -842,6 +842,11 @@ function addArticleOutline($siteId, $aiModel, $count = 10) {
         $stmt->execute([$siteId]);
         $existingCount = $stmt->fetchColumn();
         
+        // 既存記事のタイトル一覧を取得（重複チェック用）
+        $stmt = $pdo->prepare("SELECT title FROM articles WHERE site_id = ?");
+        $stmt->execute([$siteId]);
+        $existingTitles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
         // 記事概要を追加生成
         $aiService = new AIService();
         $outlinePrompt = createAdditionalOutlinePrompt($site['analysis_result'], $existingCount, $count);
@@ -864,12 +869,30 @@ function addArticleOutline($siteId, $aiModel, $count = 10) {
             return ['success' => false, 'error' => 'Failed to parse article outline'];
         }
         
-        // DBに保存
+        // DBに保存（重複チェック付き）
         $stmt = $pdo->prepare("INSERT INTO articles (site_id, title, seo_keywords, summary, ai_model, status) VALUES (?, ?, ?, ?, ?, 'draft')");
+        $insertedCount = 0;
+        $skippedTitles = [];
         
         foreach ($articles as $article) {
             if (empty($article['title']) || empty($article['keywords']) || empty($article['summary'])) {
                 continue; // 不完全な記事データはスキップ
+            }
+            
+            // 重複チェック（大文字小文字を区別せず、前後の空白も無視）
+            $normalizedTitle = trim(strtolower($article['title']));
+            $isDuplicate = false;
+            
+            foreach ($existingTitles as $existingTitle) {
+                if ($normalizedTitle === trim(strtolower($existingTitle))) {
+                    $isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if ($isDuplicate) {
+                $skippedTitles[] = $article['title'];
+                continue; // 重複する記事はスキップ
             }
             
             $stmt->execute([
@@ -879,6 +902,10 @@ function addArticleOutline($siteId, $aiModel, $count = 10) {
                 $article['summary'],
                 $aiModel
             ]);
+            
+            // 新たに追加したタイトルも既存リストに追加
+            $existingTitles[] = $article['title'];
+            $insertedCount++;
         }
         
         // 全記事一覧を取得
@@ -886,10 +913,19 @@ function addArticleOutline($siteId, $aiModel, $count = 10) {
         $stmt->execute([$siteId]);
         $allArticles = $stmt->fetchAll();
         
-        return [
+        $result = [
             'success' => true,
-            'articles' => $allArticles
+            'articles' => $allArticles,
+            'inserted_count' => $insertedCount
         ];
+        
+        // スキップされた記事がある場合は情報を含める
+        if (!empty($skippedTitles)) {
+            $result['skipped_duplicates'] = $skippedTitles;
+            $result['skipped_count'] = count($skippedTitles);
+        }
+        
+        return $result;
     } catch (PDOException $e) {
         return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
