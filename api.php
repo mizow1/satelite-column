@@ -73,6 +73,7 @@ try {
     
     require_once 'config.php';
     require_once 'ai_service.php';
+    require_once 'auth.php';
     
     $input = null;
     
@@ -97,6 +98,54 @@ try {
     switch ($action) {
         case 'test':
             sendJsonResponse(['success' => true, 'message' => 'Main API is working', 'input' => $input]);
+            break;
+        case 'login':
+            if (!isset($input['email']) || !isset($input['password'])) {
+                sendJsonResponse(['success' => false, 'error' => 'email and password are required']);
+            }
+            try {
+                $auth = new AuthService();
+                $user = $auth->login($input['email'], $input['password']);
+                $sessionId = $auth->startSession($user['id']);
+                sendJsonResponse(['success' => true, 'user' => $user, 'session_id' => $sessionId]);
+            } catch (Exception $e) {
+                sendJsonResponse(['success' => false, 'error' => $e->getMessage()]);
+            }
+            break;
+        case 'register':
+            if (!isset($input['email']) || !isset($input['password'])) {
+                sendJsonResponse(['success' => false, 'error' => 'email and password are required']);
+            }
+            try {
+                $auth = new AuthService();
+                $userId = $auth->register($input['email'], $input['password']);
+                sendJsonResponse(['success' => true, 'user_id' => $userId]);
+            } catch (Exception $e) {
+                sendJsonResponse(['success' => false, 'error' => $e->getMessage()]);
+            }
+            break;
+        case 'check_session':
+            try {
+                $auth = new AuthService();
+                $userId = $auth->checkSession();
+                if ($userId) {
+                    $user = $auth->getUser($userId);
+                    sendJsonResponse(['success' => true, 'user' => $user]);
+                } else {
+                    sendJsonResponse(['success' => false, 'error' => 'No valid session']);
+                }
+            } catch (Exception $e) {
+                sendJsonResponse(['success' => false, 'error' => $e->getMessage()]);
+            }
+            break;
+        case 'logout':
+            try {
+                $auth = new AuthService();
+                $auth->logout();
+                sendJsonResponse(['success' => true, 'message' => 'Logged out successfully']);
+            } catch (Exception $e) {
+                sendJsonResponse(['success' => false, 'error' => $e->getMessage()]);
+            }
             break;
         case 'get_sites':
             sendJsonResponse(getSites());
@@ -135,7 +184,8 @@ try {
             if (!isset($input['site_id']) || !isset($input['ai_model'])) {
                 sendJsonResponse(['success' => false, 'error' => 'site_id and ai_model are required']);
             }
-            sendJsonResponse(addArticleOutline($input['site_id'], $input['ai_model']));
+            $count = isset($input['count']) ? intval($input['count']) : 10;
+            sendJsonResponse(addArticleOutline($input['site_id'], $input['ai_model'], $count));
             break;
         case 'generate_article':
             if (!isset($input['article_id']) || !isset($input['ai_model'])) {
@@ -774,7 +824,7 @@ function exportCsv($siteId) {
     }
 }
 
-function addArticleOutline($siteId, $aiModel) {
+function addArticleOutline($siteId, $aiModel, $count = 10) {
     try {
         $pdo = DatabaseConfig::getConnection();
         
@@ -792,9 +842,9 @@ function addArticleOutline($siteId, $aiModel) {
         $stmt->execute([$siteId]);
         $existingCount = $stmt->fetchColumn();
         
-        // 記事概要を追加生成（10記事分）
+        // 記事概要を追加生成
         $aiService = new AIService();
-        $outlinePrompt = createAdditionalOutlinePrompt($site['analysis_result'], $existingCount);
+        $outlinePrompt = createAdditionalOutlinePrompt($site['analysis_result'], $existingCount, $count);
         
         $startTime = microtime(true);
         $outlineData = $aiService->generateText($outlinePrompt, $aiModel);
@@ -916,8 +966,8 @@ function createOutlinePrompt($analysisResult) {
     return $prompt;
 }
 
-function createAdditionalOutlinePrompt($analysisResult, $existingCount) {
-    $prompt = "以下のサイト分析結果を基に、サイトのテーマと読者層に最適化されたコラム記事を10記事追加で作成してください。\n\n";
+function createAdditionalOutlinePrompt($analysisResult, $existingCount, $count = 10) {
+    $prompt = "以下のサイト分析結果を基に、サイトのテーマと読者層に最適化されたコラム記事を{$count}記事追加で作成してください。\n\n";
     $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
     $prompt .= "既に{$existingCount}記事が存在するため、重複しない新しい記事を作成してください。\n\n";
     $prompt .= "記事作成の要件：\n";
@@ -926,12 +976,12 @@ function createAdditionalOutlinePrompt($analysisResult, $existingCount) {
     $prompt .= "- 主要キーワード、関連キーワード、ロングテールキーワードを含む\n";
     $prompt .= "- 読者のニーズに応える実用的で魅力的な内容\n";
     $prompt .= "- 競合他社との差別化を図る独自の視点\n\n";
-    $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで10記事分出力してください：\n\n";
+    $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで{$count}記事分出力してください：\n\n";
     $prompt .= "---記事1---\n";
     $prompt .= "タイトル: [記事タイトル]\n";
     $prompt .= "キーワード: [SEOキーワード（カンマ区切り）]\n";
     $prompt .= "概要: [記事の概要]\n\n";
-    $prompt .= "（10記事まで繰り返し）\n";
+    $prompt .= "（{$count}記事まで繰り返し）\n";
     
     return $prompt;
 }

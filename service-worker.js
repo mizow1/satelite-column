@@ -81,18 +81,17 @@ class AutoGenerationWorker {
         
         while (taskInfo.isRunning && taskInfo.generatedCount < taskInfo.totalArticles) {
             try {
-                // 記事概要を10件追加
-                const outlineResult = await this.addArticleOutline(siteId, taskInfo.aiModel);
+                // 記事概要を1件追加
+                const outlineResult = await this.addSingleArticleOutline(siteId, taskInfo.aiModel);
                 if (!outlineResult.success) {
                     throw new Error('記事概要の追加に失敗しました');
                 }
 
-                // 追加された記事から10件を生成
+                // 追加された記事を生成
                 const articles = outlineResult.articles.filter(article => article.status === 'draft');
-                const batchSize = Math.min(10, articles.length);
                 
-                for (let i = 0; i < batchSize && taskInfo.isRunning && taskInfo.generatedCount < taskInfo.totalArticles; i++) {
-                    const article = articles[i];
+                if (articles.length > 0) {
+                    const article = articles[0];
                     
                     this.sendMessage('STATUS_UPDATE', {
                         isRunning: true,
@@ -121,12 +120,9 @@ class AutoGenerationWorker {
                     await this.sleep(2000);
                 }
 
-                // バッチ間で少し長めに待機
-                await this.sleep(5000);
-
             } catch (error) {
-                console.error(`Batch processing error for site ${siteId}:`, error);
-                this.sendMessage('ERROR', { message: 'バッチ処理中にエラーが発生しました: ' + error.message, siteId });
+                console.error(`Article processing error for site ${siteId}:`, error);
+                this.sendMessage('ERROR', { message: '記事処理中にエラーが発生しました: ' + error.message, siteId });
                 
                 // 連続するエラーの場合は処理を中断
                 if (error.message.includes('サーバーからHTMLレスポンスが返されました') || 
@@ -137,6 +133,48 @@ class AutoGenerationWorker {
                 // その他のエラーは少し待機して再試行
                 await this.sleep(10000);
             }
+        }
+    }
+
+    async addSingleArticleOutline(siteId, aiModel) {
+        const response = await fetch('api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'add_article_outline',
+                site_id: siteId,
+                ai_model: aiModel,
+                check_duplicates: true,
+                count: 1
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const text = await response.text();
+        
+        // レスポンスがHTMLかJSONかを判別
+        if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+            console.error('HTML response received (first 500 chars):', text.substring(0, 500));
+            
+            // エラーメッセージを抽出してみる
+            const errorMatch = text.match(/<title>(.*?)<\/title>/i);
+            const errorTitle = errorMatch ? errorMatch[1] : 'Unknown error';
+            
+            throw new Error(`サーバーからHTMLレスポンスが返されました: ${errorTitle}`);
+        }
+        
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            console.error('=== JSON PARSE ERROR ===');
+            console.error('Error message:', error.message);
+            console.error('Response text (first 1000 chars):', text.substring(0, 1000));
+            console.error('Response text (full):', text);
+            console.error('========================');
+            throw new Error('サーバーから無効なJSONが返されました: ' + error.message);
         }
     }
 

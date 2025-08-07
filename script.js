@@ -1,3 +1,175 @@
+class AuthManager {
+    constructor() {
+        this.currentUser = null;
+        this.initializeElements();
+        this.bindEvents();
+        this.checkSession();
+    }
+
+    initializeElements() {
+        this.loginForm = document.getElementById('login-form');
+        this.registerForm = document.getElementById('register-form');
+        this.userInfo = document.getElementById('user-info');
+        this.mainContent = document.getElementById('main-content');
+        
+        this.loginEmail = document.getElementById('login-email');
+        this.loginPassword = document.getElementById('login-password');
+        this.loginBtn = document.getElementById('login-btn');
+        
+        this.registerEmail = document.getElementById('register-email');
+        this.registerPassword = document.getElementById('register-password');
+        this.registerBtn = document.getElementById('register-btn');
+        
+        this.showRegisterBtn = document.getElementById('show-register-btn');
+        this.showLoginBtn = document.getElementById('show-login-btn');
+        this.userEmail = document.getElementById('user-email');
+        this.logoutBtn = document.getElementById('logout-btn');
+    }
+
+    bindEvents() {
+        this.loginBtn.addEventListener('click', () => this.login());
+        this.registerBtn.addEventListener('click', () => this.register());
+        this.showRegisterBtn.addEventListener('click', () => this.showRegisterForm());
+        this.showLoginBtn.addEventListener('click', () => this.showLoginForm());
+        this.logoutBtn.addEventListener('click', () => this.logout());
+        
+        // Enterキーでログイン
+        this.loginPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.login();
+        });
+        this.registerPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.register();
+        });
+    }
+
+    async checkSession() {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'check_session' })
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.setUser(result.user);
+            } else {
+                this.showLoginForm();
+            }
+        } catch (error) {
+            console.error('セッション確認エラー:', error);
+            this.showLoginForm();
+        }
+    }
+
+    async login() {
+        const email = this.loginEmail.value.trim();
+        const password = this.loginPassword.value;
+        
+        if (!email || !password) {
+            alert('メールアドレスとパスワードを入力してください。');
+            return;
+        }
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'login',
+                    email: email,
+                    password: password
+                })
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.setUser(result.user);
+            } else {
+                alert('ログインに失敗しました: ' + result.error);
+            }
+        } catch (error) {
+            console.error('ログインエラー:', error);
+            alert('ログイン中にエラーが発生しました。');
+        }
+    }
+
+    async register() {
+        const email = this.registerEmail.value.trim();
+        const password = this.registerPassword.value;
+        
+        if (!email || !password) {
+            alert('メールアドレスとパスワードを入力してください。');
+            return;
+        }
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'register',
+                    email: email,
+                    password: password
+                })
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('登録が完了しました。ログインしてください。');
+                this.showLoginForm();
+            } else {
+                alert('登録に失敗しました: ' + result.error);
+            }
+        } catch (error) {
+            console.error('登録エラー:', error);
+            alert('登録中にエラーが発生しました。');
+        }
+    }
+
+    async logout() {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'logout' })
+            });
+            
+            this.currentUser = null;
+            this.showLoginForm();
+        } catch (error) {
+            console.error('ログアウトエラー:', error);
+        }
+    }
+
+    setUser(user) {
+        this.currentUser = user;
+        this.userEmail.textContent = user.email;
+        this.userInfo.style.display = 'block';
+        this.loginForm.style.display = 'none';
+        this.registerForm.style.display = 'none';
+        this.mainContent.style.display = 'block';
+    }
+
+    showLoginForm() {
+        this.loginForm.style.display = 'block';
+        this.registerForm.style.display = 'none';
+        this.userInfo.style.display = 'none';
+        this.mainContent.style.display = 'none';
+        this.loginEmail.value = '';
+        this.loginPassword.value = '';
+    }
+
+    showRegisterForm() {
+        this.loginForm.style.display = 'none';
+        this.registerForm.style.display = 'block';
+        this.userInfo.style.display = 'none';
+        this.mainContent.style.display = 'none';
+        this.registerEmail.value = '';
+        this.registerPassword.value = '';
+    }
+}
+
 class AutoGenerationManager {
     constructor() {
         this.siteWorkers = new Map(); // サイトIDをキーとしてWorkerを管理
@@ -762,6 +934,37 @@ class SatelliteColumnSystem {
                 </div>
             </div>
         `;
+    }
+
+    async createSingleArticleOutline(siteId, aiModel) {
+        if (!siteId) {
+            throw new Error('サイトIDが指定されていません。');
+        }
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'add_article_outline',
+                    site_id: siteId,
+                    ai_model: aiModel,
+                    check_duplicates: true,
+                    count: 1
+                })
+            });
+            
+            const result = await this.handleApiResponse(response);
+            
+            if (result.success && result.articles && result.articles.length > 0) {
+                return result.articles[0];
+            } else {
+                throw new Error(result.error || '記事概要生成に失敗しました');
+            }
+        } catch (error) {
+            console.error('単一記事概要作成エラー:', error);
+            throw error;
+        }
     }
 
     async createArticleOutline() {
@@ -2959,6 +3162,37 @@ class MultiSiteArticleManager {
         this.createBtn.disabled = this.selectedSites.size === 0 || this.isCreating;
     }
 
+    async createSingleArticleOutline(siteId, aiModel) {
+        if (!siteId) {
+            throw new Error('サイトIDが指定されていません。');
+        }
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'add_article_outline',
+                    site_id: siteId,
+                    ai_model: aiModel,
+                    check_duplicates: true,
+                    count: 1
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success && result.articles && result.articles.length > 0) {
+                return result.articles[0];
+            } else {
+                throw new Error(result.error || '記事概要生成に失敗しました');
+            }
+        } catch (error) {
+            console.error('単一記事概要作成エラー:', error);
+            throw error;
+        }
+    }
+
     async startCreation() {
         if (this.selectedSites.size === 0) {
             this.showErrorMessage('記事を作成するサイトを選択してください。');
@@ -3065,45 +3299,19 @@ class MultiSiteArticleManager {
                     progressItem.status.textContent = '記事概要生成中...';
                     progressItem.progressFill.style.width = '25%';
                     
-                    const outlineResponse = await fetch('api.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'create_article_outline',
-                            site_id: site.id,
-                            ai_model: document.getElementById('ai-model').value
-                        })
-                    });
-
-                    if (!outlineResponse.ok) {
-                        throw new Error(`HTTPエラー: ${outlineResponse.status}`);
-                    }
-
-                    const outlineResult = await outlineResponse.json();
-                    if (!outlineResult.success) {
-                        const errorMsg = outlineResult.error || '記事概要生成に失敗';
-                        console.error('記事概要生成APIエラー:', outlineResult);
-                        throw new Error(errorMsg);
-                    }
-
-                    // 記事配列とarticle_idの確認
-                    if (!outlineResult.articles || !Array.isArray(outlineResult.articles) || outlineResult.articles.length === 0) {
-                        console.error('記事概要生成結果に記事がありません:', outlineResult);
-                        throw new Error('記事概要生成で記事が生成されませんでした');
-                    }
+                    const aiModel = document.getElementById('ai-model').value;
+                    const article = await this.createSingleArticleOutline(site.id, aiModel);
                     
-                    // 最初の記事のIDを取得
-                    const articleId = outlineResult.articles[0].id;
-                    if (!articleId) {
-                        console.error('記事概要生成結果にarticle_idがありません:', outlineResult);
+                    if (!article || !article.id) {
                         throw new Error('記事概要生成でarticle_idが取得できませんでした');
                     }
+                    
+                    const articleId = article.id;
 
                     // 記事本文生成
                     progressItem.status.textContent = '記事本文生成中...';
                     progressItem.progressFill.style.width = '75%';
 
-                    const aiModel = document.getElementById('ai-model').value;
                     if (!aiModel) {
                         throw new Error('AIモデルが選択されていません');
                     }
@@ -3176,6 +3384,7 @@ class MultiSiteArticleManager {
 
 // アプリケーション初期化
 document.addEventListener('DOMContentLoaded', () => {
+    window.authManager = new AuthManager();
     window.satelliteSystem = new SatelliteColumnSystem();
     window.multiSiteManager = new MultiSiteArticleManager();
 });
