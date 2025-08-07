@@ -267,6 +267,7 @@ class SatelliteColumnSystem {
         this.selectAllArticlesBtn = document.getElementById('select-all-articles');
         this.deselectAllArticlesBtn = document.getElementById('deselect-all-articles');
         this.generateSelectedArticlesBtn = document.getElementById('generate-selected-articles');
+        this.generateAllUncreatedArticlesBtn = document.getElementById('generate-all-uncreated-articles');
         this.deleteSelectedArticlesBtn = document.getElementById('delete-selected-articles');
         
         // AI使用ログ関連の要素
@@ -299,6 +300,7 @@ class SatelliteColumnSystem {
         if (this.selectAllArticlesBtn) this.selectAllArticlesBtn.addEventListener('click', () => this.selectAllArticles());
         if (this.deselectAllArticlesBtn) this.deselectAllArticlesBtn.addEventListener('click', () => this.deselectAllArticles());
         if (this.generateSelectedArticlesBtn) this.generateSelectedArticlesBtn.addEventListener('click', () => this.generateSelectedArticles());
+        if (this.generateAllUncreatedArticlesBtn) this.generateAllUncreatedArticlesBtn.addEventListener('click', () => this.generateAllUncreatedArticles());
         if (this.deleteSelectedArticlesBtn) this.deleteSelectedArticlesBtn.addEventListener('click', () => this.deleteSelectedArticles());
         
         // 新しいURL解析関連のイベント
@@ -2374,6 +2376,61 @@ class SatelliteColumnSystem {
         this.showLanguageSelectionModalForSelected(selectedIds);
     }
 
+    // 未作成記事を全部作成
+    async generateAllUncreatedArticles() {
+        // 日本語記事が未作成の記事を特定
+        const uncreatedArticles = this.articles.filter(article => 
+            !this.checkArticleLanguageContent(article, 'ja')
+        );
+
+        if (uncreatedArticles.length === 0) {
+            this.showErrorMessage('未作成の記事がありません。');
+            return;
+        }
+
+        // 確認アラート
+        if (!confirm(`${uncreatedArticles.length}件の記事を作成します。よろしいですか？`)) {
+            return;
+        }
+
+        // プログレスバー表示
+        this.showAutoGenerationProgress(uncreatedArticles.length);
+        
+        // 未作成記事のIDを取得
+        const uncreatedIds = uncreatedArticles.map(article => article.id);
+        
+        try {
+            // 各記事を順次生成
+            for (let i = 0; i < uncreatedIds.length; i++) {
+                const articleId = uncreatedIds[i];
+                const article = this.articles.find(a => a.id === articleId);
+                
+                // 進捗を更新
+                this.updateAutoGenerationProgress(i, uncreatedIds.length, `記事生成中: ${article.title}`);
+                
+                // 記事を生成
+                await this.generateSingleArticleForBatch(articleId);
+                
+                // 少し待機してAPIレート制限を回避
+                await this.sleep(1000);
+            }
+            
+            // 完了
+            this.updateAutoGenerationProgress(uncreatedIds.length, uncreatedIds.length, '完了');
+            this.showSuccessMessage(`${uncreatedIds.length}件の記事を作成しました。`);
+            
+            // データを再読み込み
+            await this.loadSiteData(this.currentSiteId);
+            
+        } catch (error) {
+            console.error('記事生成エラー:', error);
+            this.showErrorMessage('記事生成中にエラーが発生しました: ' + error.message);
+        } finally {
+            // プログレスバーを非表示
+            this.hideAutoGenerationProgress();
+        }
+    }
+
     // 選択記事削除
     async deleteSelectedArticles() {
         const selectedIds = this.getSelectedArticleIds();
@@ -2733,6 +2790,68 @@ class SatelliteColumnSystem {
         } finally {
             this.hideLoading();
         }
+    }
+
+    // プログレスバー表示
+    showAutoGenerationProgress(totalCount) {
+        const autoGenerationStatus = document.getElementById('auto-generation-status');
+        if (autoGenerationStatus) {
+            autoGenerationStatus.style.display = 'block';
+        }
+    }
+
+    // プログレスバー更新
+    updateAutoGenerationProgress(currentIndex, totalCount, statusMessage) {
+        const progressFill = document.getElementById('progress-fill');
+        const statusText = document.getElementById('status-text');
+        const progressDetails = document.getElementById('progress-details');
+        
+        const percentage = Math.round((currentIndex / totalCount) * 100);
+        
+        if (progressFill) {
+            progressFill.style.width = `${percentage}%`;
+        }
+        
+        if (statusText) {
+            statusText.textContent = statusMessage;
+        }
+        
+        if (progressDetails) {
+            progressDetails.textContent = `${currentIndex}/${totalCount} (${percentage}%)`;
+        }
+    }
+
+    // プログレスバー非表示
+    hideAutoGenerationProgress() {
+        const autoGenerationStatus = document.getElementById('auto-generation-status');
+        if (autoGenerationStatus) {
+            autoGenerationStatus.style.display = 'none';
+        }
+    }
+
+    // 記事生成（バッチ処理用）
+    async generateSingleArticleForBatch(articleId) {
+        const response = await fetch('api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'generate_article',
+                article_id: articleId,
+                ai_model: this.aiModelSelect.value
+            })
+        });
+        
+        const result = await this.handleApiResponse(response);
+        if (!result.success) {
+            throw new Error(result.error || '記事生成に失敗しました');
+        }
+        
+        return result;
+    }
+
+    // 待機用のヘルパー関数
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 
