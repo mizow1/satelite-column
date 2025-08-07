@@ -12,6 +12,39 @@
             <h1>サテライトコラム生成</h1>
         </header>
 
+        <div class="multi-site-section">
+            <button type="button" id="multi-site-creation-btn" class="multi-site-btn">複数サイト記事作成</button>
+            
+            <div class="multi-site-panel" id="multi-site-panel" style="display: none;">
+                <h3>サイト選択</h3>
+                <div class="site-list" id="multi-site-list"></div>
+                
+                <div class="multi-site-controls">
+                    <div class="article-count-section">
+                        <label for="multi-site-article-count">記事数:</label>
+                        <input type="number" id="multi-site-article-count" value="10" min="1" max="100">
+                    </div>
+                    <button type="button" id="multi-site-create-btn" class="create-btn">作成</button>
+                </div>
+                
+                <div class="multi-site-progress" id="multi-site-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="multi-site-progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="multi-site-progress-text">記事作成中...</div>
+                    
+                    <div class="progress-details-toggle">
+                        <button type="button" id="toggle-progress-details">詳細表示</button>
+                    </div>
+                    
+                    <div class="progress-details" id="multi-site-progress-details" style="display: none;">
+                        <h4>作成予定記事一覧</h4>
+                        <div id="article-progress-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="site-selector">
             <label for="site-select">サイト選択:</label>
             <select id="site-select">

@@ -2855,8 +2855,327 @@ class SatelliteColumnSystem {
     }
 }
 
+// 複数サイト記事作成クラス
+class MultiSiteArticleManager {
+    constructor() {
+        this.selectedSites = new Set();
+        this.articleProgressItems = new Map();
+        this.isCreating = false;
+        this.initializeElements();
+        this.bindEvents();
+        this.loadSites();
+    }
+
+    initializeElements() {
+        this.multiSiteBtn = document.getElementById('multi-site-creation-btn');
+        this.multiSitePanel = document.getElementById('multi-site-panel');
+        this.siteList = document.getElementById('multi-site-list');
+        this.articleCountInput = document.getElementById('multi-site-article-count');
+        this.createBtn = document.getElementById('multi-site-create-btn');
+        this.progressContainer = document.getElementById('multi-site-progress');
+        this.progressFill = document.getElementById('multi-site-progress-fill');
+        this.progressText = document.getElementById('multi-site-progress-text');
+        this.toggleDetailsBtn = document.getElementById('toggle-progress-details');
+        this.progressDetails = document.getElementById('multi-site-progress-details');
+        this.articleProgressList = document.getElementById('article-progress-list');
+    }
+
+    bindEvents() {
+        this.multiSiteBtn.addEventListener('click', () => this.togglePanel());
+        this.createBtn.addEventListener('click', () => this.startCreation());
+        this.toggleDetailsBtn.addEventListener('click', () => this.toggleProgressDetails());
+    }
+
+    togglePanel() {
+        const isHidden = this.multiSitePanel.style.display === 'none';
+        this.multiSitePanel.style.display = isHidden ? 'block' : 'none';
+        
+        if (isHidden) {
+            this.loadSites();
+        }
+    }
+
+    async loadSites() {
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_all_sites' })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                this.renderSiteList(result.sites);
+            } else {
+                this.showErrorMessage(result.error || 'サイト一覧の取得に失敗しました');
+            }
+        } catch (error) {
+            this.showErrorMessage('サイト一覧の読み込み中にエラーが発生しました: ' + error.message);
+        }
+    }
+
+    renderSiteList(sites) {
+        this.siteList.innerHTML = '';
+        
+        if (sites.length === 0) {
+            this.siteList.innerHTML = '<p>作成されたサイトがありません。先にサイト分析を行ってください。</p>';
+            return;
+        }
+
+        sites.forEach(site => {
+            const siteItem = document.createElement('div');
+            siteItem.className = 'site-item';
+            siteItem.innerHTML = `
+                <input type="checkbox" class="site-checkbox" data-site-id="${site.id}" data-site-name="${site.name}">
+                <div class="site-name">${site.name || 'サイト' + site.id}</div>
+                <div class="site-description">${site.description || 'サイト説明なし'}</div>
+            `;
+
+            const checkbox = siteItem.querySelector('.site-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.selectedSites.add({
+                        id: site.id,
+                        name: site.name || 'サイト' + site.id,
+                        description: site.description || ''
+                    });
+                } else {
+                    // Set から特定のサイトを削除
+                    for (const selectedSite of this.selectedSites) {
+                        if (selectedSite.id === site.id) {
+                            this.selectedSites.delete(selectedSite);
+                            break;
+                        }
+                    }
+                }
+                this.updateCreateButtonState();
+            });
+
+            this.siteList.appendChild(siteItem);
+        });
+    }
+
+    updateCreateButtonState() {
+        this.createBtn.disabled = this.selectedSites.size === 0 || this.isCreating;
+    }
+
+    async startCreation() {
+        if (this.selectedSites.size === 0) {
+            this.showErrorMessage('記事を作成するサイトを選択してください。');
+            return;
+        }
+
+        const articleCount = parseInt(this.articleCountInput.value);
+        if (isNaN(articleCount) || articleCount < 1) {
+            this.showErrorMessage('記事数を正しく入力してください。');
+            return;
+        }
+
+        this.isCreating = true;
+        this.updateCreateButtonState();
+        this.showProgress();
+        
+        // 作成予定記事リストを初期化
+        this.initializeArticleProgressList();
+
+        let totalArticles = this.selectedSites.size * articleCount;
+        let completedArticles = 0;
+
+        try {
+            for (const site of this.selectedSites) {
+                await this.createArticlesForSite(site, articleCount, () => {
+                    completedArticles++;
+                    const progress = (completedArticles / totalArticles) * 100;
+                    this.updateOverallProgress(progress, `${completedArticles}/${totalArticles} 記事作成完了`);
+                });
+            }
+
+            this.progressText.textContent = '全ての記事作成が完了しました！';
+            
+        } catch (error) {
+            this.showErrorMessage('記事作成中にエラーが発生しました: ' + error.message);
+        } finally {
+            this.isCreating = false;
+            this.updateCreateButtonState();
+        }
+    }
+
+    initializeArticleProgressList() {
+        this.articleProgressList.innerHTML = '';
+        this.articleProgressItems.clear();
+
+        const articleCount = parseInt(this.articleCountInput.value);
+        
+        for (const site of this.selectedSites) {
+            for (let i = 1; i <= articleCount; i++) {
+                const itemId = `${site.id}-${i}`;
+                const progressItem = document.createElement('div');
+                progressItem.className = 'article-progress-item';
+                progressItem.innerHTML = `
+                    <div class="article-progress-header">
+                        <div class="article-title">記事 ${i}</div>
+                        <div class="site-name-small">${site.name}</div>
+                    </div>
+                    <div class="article-progress-bar">
+                        <div class="article-progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="article-status">準備中</div>
+                `;
+
+                this.articleProgressList.appendChild(progressItem);
+                this.articleProgressItems.set(itemId, {
+                    element: progressItem,
+                    progressFill: progressItem.querySelector('.article-progress-fill'),
+                    status: progressItem.querySelector('.article-status')
+                });
+            }
+        }
+    }
+
+    async createArticlesForSite(site, articleCount, onArticleComplete) {
+        try {
+            // サイトの記事作成方針を取得
+            const policyResponse = await fetch('api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'get_site_policy',
+                    site_id: site.id
+                })
+            });
+
+            if (!policyResponse.ok) {
+                throw new Error(`HTTPエラー: ${policyResponse.status}`);
+            }
+
+            const policyResult = await policyResponse.json();
+            if (!policyResult.success) {
+                const errorMsg = policyResult.error || `サイト ${site.name} の記事作成方針の取得に失敗しました`;
+                console.error('サイトポリシー取得APIエラー:', policyResult);
+                throw new Error(errorMsg);
+            }
+
+            // 記事概要を生成
+            for (let i = 1; i <= articleCount; i++) {
+                const itemId = `${site.id}-${i}`;
+                const progressItem = this.articleProgressItems.get(itemId);
+                
+                try {
+                    // 記事概要生成
+                    progressItem.status.textContent = '記事概要生成中...';
+                    progressItem.progressFill.style.width = '25%';
+                    
+                    const outlineResponse = await fetch('api.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'create_article_outline',
+                            site_id: site.id,
+                            ai_model: document.getElementById('ai-model').value
+                        })
+                    });
+
+                    if (!outlineResponse.ok) {
+                        throw new Error(`HTTPエラー: ${outlineResponse.status}`);
+                    }
+
+                    const outlineResult = await outlineResponse.json();
+                    if (!outlineResult.success) {
+                        const errorMsg = outlineResult.error || '記事概要生成に失敗';
+                        console.error('記事概要生成APIエラー:', outlineResult);
+                        throw new Error(errorMsg);
+                    }
+
+                    // 記事配列とarticle_idの確認
+                    if (!outlineResult.articles || !Array.isArray(outlineResult.articles) || outlineResult.articles.length === 0) {
+                        console.error('記事概要生成結果に記事がありません:', outlineResult);
+                        throw new Error('記事概要生成で記事が生成されませんでした');
+                    }
+                    
+                    // 最初の記事のIDを取得
+                    const articleId = outlineResult.articles[0].id;
+                    if (!articleId) {
+                        console.error('記事概要生成結果にarticle_idがありません:', outlineResult);
+                        throw new Error('記事概要生成でarticle_idが取得できませんでした');
+                    }
+
+                    // 記事本文生成
+                    progressItem.status.textContent = '記事本文生成中...';
+                    progressItem.progressFill.style.width = '75%';
+
+                    const aiModel = document.getElementById('ai-model').value;
+                    if (!aiModel) {
+                        throw new Error('AIモデルが選択されていません');
+                    }
+
+                    const articleResponse = await fetch('api.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'generate_article',
+                            article_id: articleId,
+                            ai_model: aiModel
+                        })
+                    });
+
+                    if (!articleResponse.ok) {
+                        throw new Error(`HTTPエラー: ${articleResponse.status}`);
+                    }
+
+                    const articleResult = await articleResponse.json();
+                    if (!articleResult.success) {
+                        const errorMsg = articleResult.error || '記事生成に失敗';
+                        console.error('記事生成APIエラー:', articleResult);
+                        throw new Error(errorMsg);
+                    }
+
+                    // 完了
+                    progressItem.status.textContent = '完了';
+                    progressItem.progressFill.style.width = '100%';
+                    progressItem.element.classList.add('status-completed');
+                    
+                    onArticleComplete();
+                    
+                    // 少し待機してから次の記事へ
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                } catch (error) {
+                    progressItem.status.textContent = `エラー: ${error.message}`;
+                    progressItem.element.classList.add('status-error');
+                    console.error(`記事作成エラー (${itemId}):`, error);
+                }
+            }
+
+        } catch (error) {
+            console.error(`サイト ${site.name} での記事作成エラー:`, error);
+            throw error;
+        }
+    }
+
+    showProgress() {
+        this.progressContainer.style.display = 'block';
+        this.updateOverallProgress(0, '記事作成を開始します...');
+    }
+
+    updateOverallProgress(percentage, message) {
+        this.progressFill.style.width = `${percentage}%`;
+        this.progressText.textContent = message;
+    }
+
+    toggleProgressDetails() {
+        const isHidden = this.progressDetails.style.display === 'none';
+        this.progressDetails.style.display = isHidden ? 'block' : 'none';
+        this.toggleDetailsBtn.textContent = isHidden ? '詳細非表示' : '詳細表示';
+    }
+
+    showErrorMessage(message) {
+        alert(message); // 後でより良いUI表示に変更可能
+        console.error(message);
+    }
+}
+
 // アプリケーション初期化
 document.addEventListener('DOMContentLoaded', () => {
     window.satelliteSystem = new SatelliteColumnSystem();
-    
+    window.multiSiteManager = new MultiSiteArticleManager();
 });

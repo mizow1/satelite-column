@@ -274,6 +274,15 @@ try {
             }
             sendJsonResponse(getSiteDataWithTranslations($input['site_id']));
             break;
+        case 'get_all_sites':
+            sendJsonResponse(getAllSites());
+            break;
+        case 'get_site_policy':
+            if (!isset($input['site_id'])) {
+                sendJsonResponse(['success' => false, 'error' => 'site_id is required']);
+            }
+            sendJsonResponse(getSitePolicy($input['site_id']));
+            break;
         default:
             sendJsonResponse(['success' => false, 'error' => 'Invalid action']);
     }
@@ -2597,6 +2606,48 @@ function getArticleTranslationData($articleId) {
             'translations' => $translationData
         ];
         
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// 全サイト一覧を取得（複数サイト記事作成用）
+function getAllSites() {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        $stmt = $pdo->query("SELECT id, name, url, created_at FROM sites ORDER BY created_at DESC");
+        $sites = $stmt->fetchAll();
+        
+        return ['success' => true, 'sites' => $sites];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// サイトの記事作成方針を取得
+function getSitePolicy($siteId) {
+    try {
+        $pdo = DatabaseConfig::getConnection();
+        $stmt = $pdo->prepare("SELECT id, name, analysis_result FROM sites WHERE id = ?");
+        $stmt->execute([$siteId]);
+        $site = $stmt->fetch();
+        
+        if (!$site) {
+            return ['success' => false, 'error' => 'Site not found'];
+        }
+        
+        return [
+            'success' => true, 
+            'policy' => [
+                'site_id' => $site['id'],
+                'site_name' => $site['name'],
+                'analysis' => $site['analysis_result']
+            ]
+        ];
     } catch (PDOException $e) {
         return ['success' => false, 'error' => 'Database error: ' . $e->getMessage()];
     } catch (Exception $e) {
