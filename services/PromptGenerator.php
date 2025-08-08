@@ -2,7 +2,7 @@
 class PromptGenerator {
     
     public function createAnalysisPrompt($siteContents) {
-        $prompt = "以下のサイトの内容を分析して、占い好きな人に向けたコラム記事を作成するための特徴とキーワードを分析してください。\n\n";
+        $prompt = "以下のサイトの内容を分析して、コラム記事を作成するための特徴とキーワードを分析してください。\n\n";
         
         foreach ($siteContents as $site) {
             $prompt .= "URL: " . $site['url'] . "\n";
@@ -11,7 +11,7 @@ class PromptGenerator {
         
         $prompt .= "以下の観点で分析し、マークダウン形式で出力してください：\n";
         $prompt .= "1. サイトの特徴\n";
-        $prompt .= "2. 占い好きな人が興味を持ちそうなポイント\n";
+        $prompt .= "2. 読者が興味を持ちそうなポイント\n";
         $prompt .= "3. SEOに有効なキーワード\n";
         $prompt .= "4. コンテンツの傾向\n";
         $prompt .= "5. 記事作成時の注意点\n";
@@ -20,7 +20,7 @@ class PromptGenerator {
     }
     
     public function createOutlinePrompt($analysisResult) {
-        $prompt = "以下のサイト分析結果を基に、占い好きな人向けのコラム記事を100記事分作成してください。\n\n";
+        $prompt = "以下のサイト分析結果を基に、コラム記事を100記事分作成してください。\n\n";
         $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
         $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで100記事分出力してください：\n\n";
         $prompt .= "---記事1---\n";
@@ -32,22 +32,21 @@ class PromptGenerator {
         return $prompt;
     }
     
-    public function createAdditionalOutlinePrompt($analysisResult, $existingCount) {
-        $prompt = "以下のサイト分析結果を基に、占い好きな人向けのコラム記事を10記事追加で作成してください。\n\n";
+    public function createAdditionalOutlinePrompt($analysisResult, $existingCount, $count = 10) {
+        $prompt = "以下のサイト分析結果を基に、コラム記事を{$count}記事分作成してください。\n\n";
         $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
-        $prompt .= "既に{$existingCount}記事が存在するため、重複しない新しい記事を作成してください。\n\n";
-        $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで10記事分出力してください：\n\n";
+        $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで{$count}記事分出力してください：\n\n";
         $prompt .= "---記事1---\n";
         $prompt .= "タイトル: [記事タイトル]\n";
         $prompt .= "キーワード: [SEOキーワード（カンマ区切り）]\n";
         $prompt .= "概要: [記事の概要]\n\n";
-        $prompt .= "（10記事まで繰り返し）\n";
+        $prompt .= "（{$count}記事まで繰り返し）\n";
         
         return $prompt;
     }
     
     public function createArticlePrompt($article) {
-        $prompt = "以下の記事概要を基に、占い好きな人向けの詳細なコラム記事を作成してください。\n\n";
+        $prompt = "以下の記事概要を基に、詳細なコラム記事を作成してください。\n\n";
         $prompt .= "タイトル: " . $article['title'] . "\n";
         $prompt .= "SEOキーワード: " . $article['seo_keywords'] . "\n";
         $prompt .= "概要: " . $article['summary'] . "\n\n";

@@ -52,9 +52,9 @@ class AppConfig {
     ];
     
     const PROMPTS = [
-        'analysis_intro' => '以下のサイトの内容を分析して、占い好きな人に向けたコラム記事を作成するための特徴とキーワードを分析してください。',
-        'outline_intro' => '以下のサイト分析結果を基に、占い好きな人向けのコラム記事を作成してください。',
-        'article_intro' => '以下の記事概要を基に、占い好きな人向けの詳細なコラム記事を作成してください。'
+        'analysis_intro' => '以下のサイトの内容を分析して、コラム記事を作成するための特徴とキーワードを分析してください。',
+        'outline_intro' => '以下のサイト分析結果を基に、コラム記事を作成してください。',
+        'article_intro' => '以下の記事概要を基に、詳細なコラム記事を作成してください。'
     ];
     
     public static function getAiModel($modelKey) {

@@ -999,14 +999,8 @@ function createAnalysisPrompt($siteContents) {
 }
 
 function createOutlinePrompt($analysisResult) {
-    $prompt = "以下のサイト分析結果を基に、サイトのテーマと読者層に最適化されたコラム記事を100記事分作成してください。\n\n";
+    $prompt = "以下のサイト分析結果を基に、コラム記事を100記事分作成してください。\n\n";
     $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
-    $prompt .= "記事作成の要件：\n";
-    $prompt .= "- 分析結果のターゲット読者層に合わせた内容\n";
-    $prompt .= "- 検索意図を満たすSEO最適化されたタイトル\n";
-    $prompt .= "- 主要キーワード、関連キーワード、ロングテールキーワードを含む\n";
-    $prompt .= "- 読者のニーズに応える実用的で魅力的な内容\n";
-    $prompt .= "- 競合他社との差別化を図る独自の視点\n\n";
     $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで100記事分出力してください：\n\n";
     $prompt .= "---記事1---\n";
     $prompt .= "タイトル: [記事タイトル]\n";
@@ -1018,15 +1012,8 @@ function createOutlinePrompt($analysisResult) {
 }
 
 function createAdditionalOutlinePrompt($analysisResult, $existingCount, $count = 10) {
-    $prompt = "以下のサイト分析結果を基に、サイトのテーマと読者層に最適化されたコラム記事を{$count}記事追加で作成してください。\n\n";
+    $prompt = "以下のサイト分析結果を基に、コラム記事を{$count}記事分作成してください。\n\n";
     $prompt .= "分析結果:\n" . $analysisResult . "\n\n";
-    $prompt .= "既に{$existingCount}記事が存在するため、重複しない新しい記事を作成してください。\n\n";
-    $prompt .= "記事作成の要件：\n";
-    $prompt .= "- 分析結果のターゲット読者層に合わせた内容\n";
-    $prompt .= "- 検索意図を満たすSEO最適化されたタイトル\n";
-    $prompt .= "- 主要キーワード、関連キーワード、ロングテールキーワードを含む\n";
-    $prompt .= "- 読者のニーズに応える実用的で魅力的な内容\n";
-    $prompt .= "- 競合他社との差別化を図る独自の視点\n\n";
     $prompt .= "以下の形式で、記事タイトル、SEOキーワード、記事概要をセットで{$count}記事分出力してください：\n\n";
     $prompt .= "---記事1---\n";
     $prompt .= "タイトル: [記事タイトル]\n";
