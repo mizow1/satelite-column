@@ -549,6 +549,12 @@ class SatelliteColumnSystem {
         if (this.articleLanguageSelect) this.articleLanguageSelect.addEventListener('change', (e) => this.changeArticleLanguage(e.target.value));
         if (this.articleDetailLanguageSelect) this.articleDetailLanguageSelect.addEventListener('change', (e) => this.changeArticleDetailLanguage(e.target.value));
         
+        // プレビュー/編集切り替えボタン
+        const toggleEditViewBtn = document.getElementById('toggle-edit-view');
+        const togglePreviewViewBtn = document.getElementById('toggle-preview-view');
+        if (toggleEditViewBtn) toggleEditViewBtn.addEventListener('click', () => this.switchViewMode('edit'));
+        if (togglePreviewViewBtn) togglePreviewViewBtn.addEventListener('click', () => this.switchViewMode('preview'));
+        
         // モーダル関連
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('close')) {
@@ -1498,15 +1504,116 @@ class SatelliteColumnSystem {
         }
 
         this.currentDetailArticleId = articleId;
-        document.getElementById('article-detail-content').innerHTML = `
-            <h3>${article.title}</h3>
-            <p><strong>SEOキーワード:</strong> ${article.seo_keywords}</p>
-            <p><strong>概要:</strong> ${article.summary}</p>
-            <hr>
-            <div style="white-space: pre-wrap; line-height: 1.6;">${article.content}</div>
-        `;
+        this.currentViewMode = 'preview'; // 初期状態はプレビューモード
+        this.renderArticleDetail(article);
         
         this.articleDetailModal.style.display = 'block';
+    }
+
+    renderArticleDetail(article) {
+        const editViewBtn = document.getElementById('toggle-edit-view');
+        const previewViewBtn = document.getElementById('toggle-preview-view');
+        
+        // ボタンのアクティブ状態を更新
+        if (this.currentViewMode === 'edit') {
+            editViewBtn.classList.add('active');
+            previewViewBtn.classList.remove('active');
+        } else {
+            editViewBtn.classList.remove('active');
+            previewViewBtn.classList.add('active');
+        }
+
+        if (this.currentViewMode === 'edit') {
+            // 編集モード：マークダウンをそのまま表示
+            document.getElementById('article-detail-content').innerHTML = `
+                <h3>${article.title}</h3>
+                <p><strong>SEOキーワード:</strong> ${article.seo_keywords}</p>
+                <p><strong>概要:</strong> ${article.summary}</p>
+                <hr>
+                <div class="article-content-edit" style="white-space: pre-wrap; line-height: 1.6; font-family: 'Courier New', monospace; background: #f5f5f5; padding: 15px; border-radius: 5px; border: 1px solid #ddd;">${article.content}</div>
+            `;
+        } else {
+            // プレビューモード：マークダウンをHTMLに変換して表示
+            const htmlContent = this.convertMarkdownToHtml(article.content);
+            document.getElementById('article-detail-content').innerHTML = `
+                <h3>${article.title}</h3>
+                <p><strong>SEOキーワード:</strong> ${article.seo_keywords}</p>
+                <p><strong>概要:</strong> ${article.summary}</p>
+                <hr>
+                <div class="article-content-preview" style="line-height: 1.6;">${htmlContent}</div>
+            `;
+        }
+    }
+
+    convertMarkdownToHtml(markdownText) {
+        
+        // ```markdown で囲まれたコードブロックから内容を抽出
+        if (markdownText.trim().startsWith('```markdown')) {
+            // ```markdown と ``` で囲まれた内容を抽出
+            const lines = markdownText.split('\n');
+            if (lines[0].trim() === '```markdown') {
+                // 最初の```markdownと最後の```を除去
+                lines.shift(); // 最初の行を削除
+                // 最後の```を探して削除
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    if (lines[i].trim() === '```') {
+                        lines.splice(i);
+                        break;
+                    }
+                }
+                markdownText = lines.join('\n');
+            }
+        }
+        
+        // HTMLタグが既に含まれているかチェック
+        if (markdownText.includes('<pre><code class="language-markdown">')) {
+            // <pre><code class="language-markdown">タグの中身を抽出
+            const match = markdownText.match(/<pre><code class="language-markdown">([\s\S]*?)<\/code><\/pre>/);
+            if (match && match[1]) {
+                markdownText = match[1];
+                // HTMLエンティティをデコード
+                markdownText = markdownText
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#39;/g, "'");
+            }
+        }
+        
+        if (typeof marked === 'undefined') {
+            console.error('Marked.js not loaded');
+            return markdownText.replace(/\n/g, '<br>');
+        }
+        
+        try {
+            // marked.js v12の正しいAPI
+            let htmlResult;
+            if (typeof marked.parse === 'function') {
+                htmlResult = marked.parse(markdownText);
+            } else if (typeof marked === 'function') {
+                htmlResult = marked(markdownText);
+            } else {
+                throw new Error('marked API not available');
+            }
+            
+            return htmlResult;
+        } catch (error) {
+            console.error('Markdown conversion error:', error);
+            return markdownText.replace(/\n/g, '<br>');
+        }
+    }
+
+    switchViewMode(mode) {
+        if (!this.currentDetailArticleId) {
+            return;
+        }
+
+        this.currentViewMode = mode;
+        const article = this.articles.find(a => a.id == this.currentDetailArticleId);
+        if (article) {
+            this.renderArticleDetail(article);
+        }
     }
 
     closeModal() {
@@ -1779,13 +1886,11 @@ class SatelliteColumnSystem {
 
     // 成功メッセージを表示
     showSuccessMessage(message) {
-        console.log(message);
         this.showNotification(message, 'success');
     }
 
     // 警告メッセージを表示
     showWarningMessage(message) {
-        console.log(message);
         this.showNotification(message, 'warning');
     }
 

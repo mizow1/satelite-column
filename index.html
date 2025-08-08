@@ -251,22 +251,28 @@
             <div class="modal-content">
                 <span class="close">&times;</span>
                 <h2>記事詳細</h2>
-                <div class="article-detail-language-selector">
-                    <label for="article-detail-language-select">表示言語:</label>
-                    <select id="article-detail-language-select">
-                        <option value="ja">日本語</option>
-                        <option value="en">英語</option>
-                        <option value="zh-CN">中国語（簡体）</option>
-                        <option value="zh-TW">中国語（繁體）</option>
-                        <option value="ko">韓国語</option>
-                        <option value="es">スペイン語</option>
-                        <option value="ar">アラビア語</option>
-                        <option value="pt">ポルトガル語</option>
-                        <option value="fr">フランス語</option>
-                        <option value="de">ドイツ語</option>
-                        <option value="ru">ロシア語</option>
-                        <option value="it">イタリア語</option>
-                    </select>
+                <div class="article-detail-controls">
+                    <div class="article-detail-language-selector">
+                        <label for="article-detail-language-select">表示言語:</label>
+                        <select id="article-detail-language-select">
+                            <option value="ja">日本語</option>
+                            <option value="en">英語</option>
+                            <option value="zh-CN">中国語（簡体）</option>
+                            <option value="zh-TW">中国語（繁體）</option>
+                            <option value="ko">韓国語</option>
+                            <option value="es">スペイン語</option>
+                            <option value="ar">アラビア語</option>
+                            <option value="pt">ポルトガル語</option>
+                            <option value="fr">フランス語</option>
+                            <option value="de">ドイツ語</option>
+                            <option value="ru">ロシア語</option>
+                            <option value="it">イタリア語</option>
+                        </select>
+                    </div>
+                    <div class="article-view-toggle">
+                        <button type="button" id="toggle-edit-view" class="active">編集</button>
+                        <button type="button" id="toggle-preview-view">プレビュー</button>
+                    </div>
                 </div>
                 <div id="article-detail-content"></div>
             </div>
@@ -289,6 +295,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

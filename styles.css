@@ -465,6 +465,163 @@ header p {
     color: black;
 }
 
+/* 記事詳細モーダルの改良 */
+.article-detail-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.article-view-toggle {
+    display: flex;
+    gap: 5px;
+}
+
+.article-view-toggle button {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    background: #f8f9fa;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.3s;
+    font-size: 14px;
+}
+
+.article-view-toggle button:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.article-view-toggle button:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: none;
+}
+
+.article-view-toggle button.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.article-view-toggle button:hover:not(.active) {
+    background: #e9ecef;
+}
+
+/* プレビューコンテンツのスタイル */
+.article-content-preview {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: none;
+}
+
+.article-content-preview h1,
+.article-content-preview h2,
+.article-content-preview h3,
+.article-content-preview h4,
+.article-content-preview h5,
+.article-content-preview h6 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.article-content-preview h1 { font-size: 2em; }
+.article-content-preview h2 { font-size: 1.5em; }
+.article-content-preview h3 { font-size: 1.25em; }
+.article-content-preview h4 { font-size: 1em; }
+.article-content-preview h5 { font-size: 0.875em; }
+.article-content-preview h6 { font-size: 0.85em; }
+
+.article-content-preview p {
+    margin-bottom: 16px;
+}
+
+.article-content-preview ul,
+.article-content-preview ol {
+    margin-bottom: 16px;
+    padding-left: 30px;
+}
+
+.article-content-preview li {
+    margin-bottom: 4px;
+}
+
+.article-content-preview blockquote {
+    margin: 16px 0;
+    padding: 0 16px;
+    border-left: 4px solid #dfe2e5;
+    color: #6a737d;
+}
+
+.article-content-preview code {
+    background: #f6f8fa;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 85%;
+}
+
+.article-content-preview pre {
+    background: #f6f8fa;
+    border-radius: 6px;
+    padding: 16px;
+    overflow: auto;
+    margin-bottom: 16px;
+}
+
+.article-content-preview pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.article-content-preview table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 16px;
+}
+
+.article-content-preview th,
+.article-content-preview td {
+    border: 1px solid #dfe2e5;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.article-content-preview th {
+    background: #f6f8fa;
+    font-weight: 600;
+}
+
+.article-content-preview a {
+    color: #0366d6;
+    text-decoration: none;
+}
+
+.article-content-preview a:hover {
+    text-decoration: underline;
+}
+
+.article-content-preview strong,
+.article-content-preview b {
+    font-weight: bold;
+}
+
+.article-content-preview em,
+.article-content-preview i {
+    font-style: italic;
+}
+
+.article-content-preview hr {
+    margin: 24px 0;
+    border: none;
+    border-top: 1px solid #e1e4e8;
+}
+
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -1168,12 +1325,12 @@ header p {
 
 .modal-content {
     background: white;
-    padding: 0;
+    padding: 1em;
     border-radius: 8px;
     width: 90%;
     max-width: 800px;
     max-height: 90vh;
-    overflow: hidden;
+    
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
